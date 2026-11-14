@@ -1,0 +1,18 @@
+name: MeteorBoss
+version: '${project.version}'
+main: com.zyven.meteorboss.MeteorBossPlugin
+api-version: '26.2'
+folia-supported: true
+author: Zyven
+description: Meteor düşme ve boss etkinliği
+
+commands:
+  meteor:
+    description: Meteor düşürür
+    usage: /meteor [x z [dünya]] | /meteor reload
+    permission: meteorboss.admin
+
+permissions:
+  meteorboss.admin:
+    description: Meteor komutlarını kullanma izni
+    default: op

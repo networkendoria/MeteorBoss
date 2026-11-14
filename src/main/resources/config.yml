@@ -1,0 +1,21 @@
+# MeteorBoss ayarları (değiştirdikten sonra /meteor reload yaz)
+
+# Kraterin yarıçapı (blok). 2 ile 12 arası
+crater-radius: 4
+
+# Meteorun düşmeye başladığı yükseklik (yerden kaç blok yukarıda)
+fall-height: 90
+
+# Düşüş süresi (tick, 20 tick = 1 saniye)
+fall-ticks: 100
+
+# false yaparsan meteor blok kırmaz, sadece efekt çıkar
+break-blocks: true
+
+# Meteor düşerken herkese sohbette duyuru
+announce: true
+announce-coords: true
+
+messages:
+  incoming: "<gold><bold>☄ Gökyüzünden bir meteor düşüyor!</bold></gold>"
+  coords: " <yellow>Konum: <white>%x% %z%"
