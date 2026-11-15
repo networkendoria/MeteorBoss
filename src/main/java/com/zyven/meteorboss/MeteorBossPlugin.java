@@ -29,6 +29,11 @@ public final class MeteorBossPlugin extends JavaPlugin {
         data = YamlConfiguration.loadConfiguration(dataFile);
         events = new EventManager(this, new BackupStore(getDataFolder()));
 
+        BossManager bossManager = new BossManager(this);
+        events.setBossManager(bossManager);
+        events.addEmergeHook(bossManager::spawn);
+        getServer().getPluginManager().registerEvents(new BossListener(bossManager), this);
+
         PluginCommand command = getCommand("meteor");
         if (command != null) {
             MeteorCommand handler = new MeteorCommand(this, events);

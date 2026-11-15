@@ -33,4 +33,38 @@ messages:
   title: "<gradient:#b46bff:#ff5f3d><bold>☄ METEOR ☄</bold></gradient>"
   subtitle: "<gray>Gökyüzünden bir şey düşüyor..."
   countdown: "<gold>☄ Çarpmaya <white>%s</white> saniye"
-  called: "<green>Meteor yola çıktı. <gray>(Boss 2. aşamada eklenecek)"
+  called: "<green>Boss başarıyla çağırıldı"
+  bossbar: "<gradient:#b46bff:#ff3d6e><bold>✦ ᴛʏᴘʜᴏɴ ✦</bold></gradient> <gray>│ <white>ᴇᴠʀᴇ %phase%"
+
+boss:
+  # Can: temel can + oyuncu başına ek can (en fazla 1024)
+  health: 600
+  health-per-player: 100
+  # Boss'un vuruş hasarı (2 = 1 kalp) ve tek vuruşta verebileceği en yüksek hasar
+  melee-damage: 8
+  max-hit: 10
+  speed: 0.27
+  # Çıkış sahnesi süresi (tick)
+  emerge-ticks: 80
+  # Çıktığı çukurdan en fazla kaç blok uzaklaşabilir
+  roam-limit: 50
+  # Hasar almadan kaç saniye sonra can yenilemeye başlasın
+  heal-idle-seconds: 10
+  # Saniyede maksimum canın yüzde kaçı yenilensin (4 kristal sağlamken)
+  heal-percent-per-second: 2
+  # Toplamda en fazla maksimum canın yüzde kaçı yenilenebilir
+  heal-cap-percent: 50
+  # Lav, ateş, patlama gibi tuzaklardan gelen tek hasarın üst sınırı
+  trap-damage-cap: 2
+  # Saldırı hasarları
+  slam-damage: 6
+  strike-damage: 5
+  # Saldırılar arası bekleme (saniye)
+  attack-cooldown-seconds: 8
+  # Boss barı kaç blok yakındaki oyunculara görünsün
+  bar-radius: 150
+  # Boss ölünce yere düşen ödüller (EŞYA:ADET)
+  rewards:
+    - "GOLD_INGOT:5"
+    - "DIAMOND:10"
+  exp: 300

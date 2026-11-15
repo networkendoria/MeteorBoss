@@ -47,6 +47,11 @@ public final class EventManager {
     private final List<Consumer<Session>> emergeHooks = new CopyOnWriteArrayList<>();
 
     private volatile Session current;
+    private volatile BossManager boss;
+
+    public void setBossManager(BossManager boss) {
+        this.boss = boss;
+    }
 
     public EventManager(MeteorBossPlugin plugin, BackupStore backup) {
         this.plugin = plugin;
@@ -69,7 +74,7 @@ public final class EventManager {
         if (world.getEnvironment() != World.Environment.NORMAL) {
             return "Meteor şimdilik sadece normal dünyada (overworld) düşer.";
         }
-        if (current != null) {
+        if (current != null || (boss != null && boss.isAlive())) {
             return "Bir etkinlik zaten sürüyor. Bitirmek için: /meteor etkinlik -k";
         }
         if (backup.exists()) {
@@ -531,9 +536,10 @@ public final class EventManager {
 
     /** /meteor etkinlik -k : her şeyi bitirir, çukur 5 saniyede kapanır. */
     public synchronized boolean forceEnd() {
+        boolean bossGone = boss != null && boss.removeNow();
         Session s = current;
         if (s == null) {
-            return false;
+            return bossGone;
         }
         s.cancelled = true;
         switch (s.state) {

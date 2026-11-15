@@ -19,6 +19,11 @@ final class ArenaPlanner {
         return Math.max(3, radius / 2);
     }
 
+    /** Sunağın (çukurun ortasının) zemin yüksekliği. Boss buranın üstünde çıkar. */
+    static int altarY(int groundY, int radius, int minY) {
+        return floorY(0, radius, depthMax(radius), groundY, minY);
+    }
+
     /** Parça (chunk) anahtarına göre gruplanmış değişiklik listesi. */
     static Map<Long, List<Change>> plan(int centerX, int centerZ, int groundY, int radius,
                                         long seed, int minY, int maxY) {
