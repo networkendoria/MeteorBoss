@@ -42,6 +42,14 @@ auto-event:
   # Dünya spawn noktasının bu kadar yakınına düşmesin
   avoid-spawn-radius: 300
 
+# Özel model paketi (sadece model-mode: pack iken). Paket: /meteor pack ile plugins/MeteorBoss/typhon-pack.zip yazılır.
+# Zip'i bir internet adresine yükle (doğrudan indirme linki) ve buraya yaz. Boş bırakırsan paketi sunucu
+# kendisi göndermez (server.properties'teki resource-pack kullanılabilir). Paketi yüklemeyen oyuncu boss'u göremez.
+resource-pack:
+  url: ""
+  sha1: ""
+  prompt: "<light_purple>Typhon modeli için paket"
+
 messages:
   super-warning: "<dark_purple>⚠ <light_purple><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"
   title: "<gradient:#b46bff:#ff5f3d><bold>☄ METEOR ☄</bold></gradient>"
@@ -75,7 +83,9 @@ boss:
   strike-damage: 5
   # Saldırılar arası bekleme (saniye)
   attack-cooldown-seconds: 8
-  # Görünüm kalitesi: high (~60 parça), medium (~45), low (~30). Sunucu kasarsa düşür
+  # Görünüm modu: "blocks" = vanilla bloklardan (paket gerekmez), "pack" = özel model (resource pack gerekir)
+  model-mode: blocks
+  # Görünüm kalitesi (sadece blocks modunda): high (~60 parça), medium (~45), low (~30). Sunucu kasarsa düşür
   model-quality: high
   # Süper saldırı "Boşluk Patlaması": hazırlanırken boss'a kimse vuramaz, sonra herkesi savurur
   super:

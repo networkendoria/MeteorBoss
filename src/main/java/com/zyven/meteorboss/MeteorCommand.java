@@ -36,6 +36,16 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(events.text("<green>MeteorBoss ayarları yenilendi."));
                 return true;
             }
+            case "pack" -> {
+                String sha1 = plugin.writePack();
+                if (sha1 == null) {
+                    sender.sendMessage(events.text("<red>Paket yazılamadı. Konsola bak."));
+                } else {
+                    sender.sendMessage(events.text("<green>Paket yazıldı: plugins/MeteorBoss/typhon-pack.zip"));
+                    sender.sendMessage(events.text("<gray>sha1: <white>" + sha1));
+                }
+                return true;
+            }
             case "debug" -> {
                 events.debug(sender);
                 return true;
@@ -128,7 +138,7 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> out = new ArrayList<>();
         if (args.length == 1) {
-            for (String s : List.of("etkinlik", "reload", "debug")) {
+            for (String s : List.of("etkinlik", "reload", "debug", "pack")) {
                 if (s.startsWith(args[0].toLowerCase())) {
                     out.add(s);
                 }

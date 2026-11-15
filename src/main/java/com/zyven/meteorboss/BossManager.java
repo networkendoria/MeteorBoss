@@ -9,6 +9,7 @@ import org.bukkit.Color;
 import org.bukkit.HeightMap;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
@@ -19,6 +20,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.EnderCrystal;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -27,13 +29,17 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+
+import static com.zyven.meteorboss.TyphonModel.*;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -51,111 +57,6 @@ import java.util.concurrent.ThreadLocalRandom;
  * Folia: boss'un döngüsü zombinin kendi thread'inde (entity scheduler) çalışır.
  */
 public final class BossManager {
-
-    // Parça grupları (aynı grup birlikte hareket eder)
-    private static final int G_BODY = 0;
-    private static final int G_ARM_L = 1;
-    private static final int G_ARM_R = 2;
-    private static final int G_LEG_L = 3;
-    private static final int G_LEG_R = 4;
-    private static final int G_HEAD = 5;
-    private static final int G_JAW = 6;
-    private static final int G_CHEST = 7;
-    private static final int G_CRY_L = 8;
-    private static final int G_CRY_R = 9;
-    private static final int GROUPS = 10;
-
-    /**
-     * Görünüm parçası. Ölçüler metre, ayak ortasına göre, cy = alt kenar.
-     * kind: 0 normal, 1 damar, 2 göz, 3 süs kristali, 4 çatlak (parlar).
-     * roll: kendi ekseninde eğim (radyan). minPhase: bu evreye gelince görünür.
-     * detail: 0 her kalitede, 1 orta ve yüksek, 2 sadece yüksek.
-     */
-    private record Part(Material mat, double cx, double cy, double cz,
-                        double sx, double sy, double sz,
-                        int kind, int group, double roll, int minPhase, int detail) {}
-
-    private static final List<Part> PARTS = buildParts();
-
-    private static void mirror(List<Part> l, Material m, double cx, double cy, double cz,
-                               double sx, double sy, double sz, int kind, int gl, int gr,
-                               double roll, int minPhase, int detail) {
-        l.add(new Part(m, -cx, cy, cz, sx, sy, sz, kind, gl, roll, minPhase, detail));
-        l.add(new Part(m, cx, cy, cz, sx, sy, sz, kind, gr, -roll, minPhase, detail));
-    }
-
-    private static Part one(Material m, double cx, double cy, double cz,
-                            double sx, double sy, double sz, int kind, int group,
-                            double roll, int minPhase, int detail) {
-        return new Part(m, cx, cy, cz, sx, sy, sz, kind, group, roll, minPhase, detail);
-    }
-
-    private static List<Part> buildParts() {
-        List<Part> l = new ArrayList<>();
-        Material obs = Material.OBSIDIAN;
-        Material cry = Material.CRYING_OBSIDIAN;
-        Material end = Material.END_STONE;
-        Material brick = Material.END_STONE_BRICKS;
-        Material ame = Material.AMETHYST_BLOCK;
-        Material mag = Material.MAGMA_BLOCK;
-        Material cluster = Material.AMETHYST_CLUSTER;
-
-        // Bacaklar
-        mirror(l, obs, 0.6, 0.45, 0.0, 1.0, 1.75, 1.0, 0, G_LEG_L, G_LEG_R, 0, 1, 0);
-        mirror(l, obs, 0.6, 0.0, 0.25, 1.15, 0.45, 1.5, 0, G_LEG_L, G_LEG_R, 0, 1, 0);
-        mirror(l, cry, 0.6, 1.0, 0.55, 0.9, 0.55, 0.25, 0, G_LEG_L, G_LEG_R, 0, 1, 1);
-        mirror(l, ame, 0.6, 0.5, 0.52, 0.1, 1.5, 0.05, 1, G_LEG_L, G_LEG_R, 0, 1, 1);
-
-        // Kalça ve karın
-        l.add(one(obs, 0.0, 1.9, 0.0, 2.5, 0.5, 1.3, 0, G_BODY, 0, 1, 0));
-        l.add(one(cry, 0.0, 2.4, 0.0, 2.0, 1.0, 1.1, 0, G_BODY, 0, 1, 0));
-        l.add(one(ame, 0.0, 2.5, 0.56, 0.12, 0.9, 0.05, 1, G_BODY, 0, 1, 0));
-
-        // Göğüs: X şeklinde parlayan damarlar
-        l.add(one(obs, 0.0, 3.35, 0.0, 2.8, 1.35, 1.4, 0, G_CHEST, 0, 1, 0));
-        l.add(one(ame, 0.0, 3.28, 0.72, 0.12, 1.5, 0.05, 1, G_CHEST, 0.62, 1, 0));
-        l.add(one(ame, 0.0, 3.28, 0.72, 0.12, 1.5, 0.05, 1, G_CHEST, -0.62, 1, 0));
-        l.add(one(cry, 0.0, 3.7, 0.7, 1.4, 0.7, 0.12, 0, G_CHEST, 0, 1, 1));
-
-        // Omuz zırhı, kollar, yumruklar, parmaklar
-        mirror(l, obs, 2.05, 4.2, 0.0, 1.5, 0.95, 1.7, 0, G_ARM_L, G_ARM_R, 0, 1, 0);
-        mirror(l, obs, 2.3, 5.1, 0.0, 0.4, 0.7, 0.4, 0, G_ARM_L, G_ARM_R, 0, 1, 2);
-        mirror(l, obs, 2.15, 1.0, 0.0, 0.95, 3.3, 0.95, 0, G_ARM_L, G_ARM_R, 0, 1, 0);
-        mirror(l, ame, 2.15, 1.5, 0.5, 0.1, 2.0, 0.05, 1, G_ARM_L, G_ARM_R, 0, 1, 1);
-        mirror(l, obs, 2.15, 0.1, 0.1, 1.35, 1.0, 1.3, 0, G_ARM_L, G_ARM_R, 0, 1, 0);
-        for (double fx : new double[]{-0.4, 0.0, 0.4}) {
-            mirror(l, obs, 2.15 + fx, 0.0, 0.65, 0.28, 0.5, 0.28, 0, G_ARM_L, G_ARM_R, 0, 1, 2);
-        }
-
-        // Kafatası, gözler, burun, boynuzlar
-        l.add(one(end, 0.0, 4.7, 0.05, 1.7, 1.45, 1.6, 0, G_HEAD, 0, 1, 0));
-        l.add(one(brick, 0.0, 6.05, 0.0, 1.0, 0.25, 1.0, 0, G_HEAD, 0, 1, 1));
-        mirror(l, obs, 0.42, 5.3, 0.86, 0.55, 0.45, 0.06, 0, G_HEAD, G_HEAD, 0, 1, 0);
-        mirror(l, ame, 0.42, 5.34, 0.9, 0.4, 0.32, 0.06, 2, G_HEAD, G_HEAD, 0, 1, 0);
-        l.add(one(obs, 0.0, 4.95, 0.86, 0.3, 0.35, 0.06, 0, G_HEAD, 0, 1, 0));
-        mirror(l, brick, 0.75, 6.1, 0.0, 0.4, 0.7, 0.4, 0, G_HEAD, G_HEAD, 0.25, 1, 0);
-        mirror(l, brick, 1.05, 6.7, 0.0, 0.28, 0.65, 0.28, 0, G_HEAD, G_HEAD, 0.55, 1, 0);
-
-        // Çene ve dişler
-        l.add(one(brick, 0.0, 4.35, 0.2, 1.3, 0.35, 1.2, 0, G_JAW, 0, 1, 0));
-        for (double tx : new double[]{-0.45, -0.15, 0.15, 0.45}) {
-            l.add(one(end, tx, 4.62, 0.75, 0.18, 0.3, 0.12, 0, G_JAW, 0, 1, 2));
-        }
-
-        // Omuz yanlarında süs kristalleri
-        mirror(l, cluster, 2.0, 5.1, -0.35, 1.3, 2.0, 1.3, 3, G_CRY_L, G_CRY_R, 0, 1, 0);
-        mirror(l, cluster, 2.55, 4.9, 0.3, 0.8, 1.2, 0.8, 3, G_CRY_L, G_CRY_R, 0.4, 1, 1);
-
-        // Çatlaklar ve kor (evre 2 ve 3'te görünür)
-        l.add(one(mag, -0.8, 3.5, 0.72, 0.45, 0.5, 0.05, 4, G_CHEST, 0.2, 2, 1));
-        l.add(one(mag, 0.9, 3.85, 0.72, 0.4, 0.35, 0.05, 4, G_CHEST, -0.3, 2, 1));
-        l.add(one(mag, 0.4, 2.6, 0.57, 0.35, 0.45, 0.05, 4, G_BODY, 0.2, 3, 1));
-        l.add(one(mag, -2.15, 2.0, 0.49, 0.5, 0.7, 0.05, 4, G_ARM_L, 0, 2, 2));
-        l.add(one(mag, 2.15, 3.0, 0.49, 0.5, 0.7, 0.05, 4, G_ARM_R, 0, 2, 2));
-        mirror(l, mag, 0.6, 0.9, 0.52, 0.4, 0.6, 0.05, 4, G_LEG_L, G_LEG_R, 0, 3, 2);
-        l.add(one(obs, 0.3, 5.5, 0.9, 0.08, 0.6, 0.05, 0, G_HEAD, 0.4, 2, 2));
-        return List.copyOf(l);
-    }
 
     private static final Vector3f PIVOT_ARM_L = new Vector3f(-2.15f, 4.3f, 0f);
     private static final Vector3f PIVOT_ARM_R = new Vector3f(2.15f, 4.3f, 0f);
@@ -200,7 +101,8 @@ public final class BossManager {
         UUID bodyId;
         BossBar bar;
         final List<Part> parts = new ArrayList<>();
-        final List<BlockDisplay> displays = new ArrayList<>();
+        final List<Display> displays = new ArrayList<>();
+        boolean pack; // true: özel model (resource pack), false: blok modeli
         final List<EnderCrystal> crystals = new CopyOnWriteArrayList<>();
         final Map<UUID, Double> damage = new ConcurrentHashMap<>();
 
@@ -309,8 +211,25 @@ public final class BossManager {
                 case "medium" -> 1;
                 default -> 2;
             };
+            nb.pack = cfg.getString("boss.model-mode", "blocks").equalsIgnoreCase("pack");
+            if (nb.pack) {
+                for (int g = 0; g < GROUPS; g++) {
+                    final int gg = g;
+                    ItemDisplay d = world.spawn(home, ItemDisplay.class, dd -> {
+                        dd.setItemStack(packItem(gg, 1));
+                        dd.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+                        dd.setTransformation(packTransform(nb, gg, 0.05));
+                        dd.setPersistent(false);
+                        dd.setInterpolationDuration(4);
+                        dd.setTeleportDuration(3);
+                        dd.setViewRange(3.0f);
+                        dd.setBrightness(new Display.Brightness(12, 12));
+                    });
+                    nb.displays.add(d);
+                }
+            }
             for (Part pt : PARTS) {
-                if (pt.detail() > level) {
+                if (nb.pack || pt.detail() > level) {
                     continue;
                 }
                 BlockDisplay d = world.spawn(home, BlockDisplay.class, dd -> {
@@ -529,12 +448,31 @@ public final class BossManager {
             b.sig[g] = sig[g];
         }
 
+        if (b.pack) {
+            for (int g = 0; g < GROUPS && g < b.displays.size(); g++) {
+                if (!changed[g]) {
+                    continue;
+                }
+                Display d = b.displays.get(g);
+                if (!d.isValid()) {
+                    continue;
+                }
+                Transformation tr = packTransform(b, g, k);
+                d.getScheduler().run(plugin, x -> {
+                    d.setInterpolationDelay(0);
+                    d.setInterpolationDuration(4);
+                    d.setTransformation(tr);
+                }, null);
+            }
+            return;
+        }
+
         for (int i = 0; i < b.parts.size(); i++) {
             Part pt = b.parts.get(i);
             if (!changed[pt.group()]) {
                 continue;
             }
-            BlockDisplay d = b.displays.get(i);
+            Display d = b.displays.get(i);
             if (!d.isValid()) {
                 continue;
             }
@@ -545,6 +483,85 @@ public final class BossManager {
                 d.setTransformation(tr);
             }, null);
         }
+    }
+
+    // ------------------------------------------------------------------ özel model (resource pack)
+
+    private final Set<UUID> packLoaded = ConcurrentHashMap.newKeySet();
+
+    private static ItemStack packItem(int group, int variant) {
+        ItemStack st = new ItemStack(Material.PAPER);
+        ItemMeta meta = st.getItemMeta();
+        meta.setItemModel(new NamespacedKey("typhon", GROUP_NAMES[group] + "_" + variant));
+        st.setItemMeta(meta);
+        return st;
+    }
+
+    /** Paket modunda bir grubun (kol, kafa...) o anki duruşa göre dönüşümü. */
+    private static Transformation packTransform(Boss b, int group, double k) {
+        float scale = (float) PACK_SCALE;
+        Vector3f t = new Vector3f(0f, (float) PACK_SHIFT_Y, 0f);
+        Vector3f sc = new Vector3f(scale, scale, scale);
+        if (group == G_CHEST) {
+            sc.y *= (float) (1.0 + b.breath);
+        } else if (group == G_CRY_L) {
+            t.y += (float) b.bobL;
+        } else if (group == G_CRY_R) {
+            t.y += (float) b.bobR;
+        }
+        Quaternionf q = new Quaternionf();
+        Vector3f pivot = pivotOf(group);
+        double angle = angleOf(b, group);
+        if (pivot != null && Math.abs(angle) > 1e-4) {
+            Quaternionf qp = new Quaternionf().rotateX((float) angle);
+            t.sub(pivot);
+            qp.transform(t);
+            t.add(pivot);
+            q = qp;
+        }
+        float kk = (float) k;
+        return new Transformation(t.mul(kk), q, sc.mul(kk), new Quaternionf());
+    }
+
+    /** Oyuncu girince (ayarlıysa) paketi gönderir. */
+    public void onJoin(Player p) {
+        FileConfiguration cfg = plugin.getConfig();
+        String url = cfg.getString("resource-pack.url", "");
+        if (url == null || url.isBlank() || !cfg.getString("boss.model-mode", "blocks").equalsIgnoreCase("pack")) {
+            return;
+        }
+        byte[] hash = hex(cfg.getString("resource-pack.sha1", ""));
+        Component prompt = mm.deserialize(cfg.getString("resource-pack.prompt", "<light_purple>Typhon modeli için paket"));
+        UUID id = UUID.nameUUIDFromBytes("meteorboss-typhon".getBytes());
+        p.getScheduler().runDelayed(plugin, t -> p.addResourcePack(id, url, hash, prompt, false), null, 40L);
+    }
+
+    public void onPackStatus(PlayerResourcePackStatusEvent e) {
+        if (e.getStatus() == PlayerResourcePackStatusEvent.Status.SUCCESSFULLY_LOADED) {
+            packLoaded.add(e.getPlayer().getUniqueId());
+        } else if (e.getStatus() != PlayerResourcePackStatusEvent.Status.ACCEPTED
+                && e.getStatus() != PlayerResourcePackStatusEvent.Status.DOWNLOADED) {
+            packLoaded.remove(e.getPlayer().getUniqueId());
+        }
+    }
+
+    public void onQuit(Player p) {
+        packLoaded.remove(p.getUniqueId());
+    }
+
+    private static byte[] hex(String s) {
+        if (s == null || s.length() != 40) {
+            return null;
+        }
+        byte[] out = new byte[20];
+        try {
+            for (int i = 0; i < 20; i++) {
+                out[i] = (byte) Integer.parseInt(s.substring(i * 2, i * 2 + 2), 16);
+            }
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ döngü
@@ -673,7 +690,7 @@ public final class BossManager {
             return;
         }
         b.lastSync = bl.clone();
-        for (BlockDisplay d : b.displays) {
+        for (Display d : b.displays) {
             if (d.isValid()) {
                 d.teleportAsync(bl);
             }
@@ -1067,7 +1084,7 @@ public final class BossManager {
             Material red = Material.REDSTONE_BLOCK;
             for (int i = 0; i < b.parts.size(); i++) {
                 Part pt = b.parts.get(i);
-                BlockDisplay d = b.displays.get(i);
+                BlockDisplay d = (BlockDisplay) b.displays.get(i);
                 if (pt.kind() == 1 || pt.kind() == 2) {
                     d.getScheduler().run(plugin, x -> d.setBlock(red.createBlockData()), null);
                 } else if (pt.kind() == 3) {
@@ -1076,6 +1093,14 @@ public final class BossManager {
                         d.setGlowColorOverride(Color.RED);
                     }, null);
                 }
+            }
+        }
+        if (b.pack) {
+            int variant = Math.min(3, b.phase);
+            for (int g = 0; g < GROUPS && g < b.displays.size(); g++) {
+                Display pd = b.displays.get(g);
+                ItemStack st = packItem(g, variant);
+                pd.getScheduler().run(plugin, x -> ((ItemDisplay) pd).setItemStack(st), null);
             }
         }
         b.forcePose = true; // çatlaklar görünür olsun
@@ -1104,6 +1129,20 @@ public final class BossManager {
                     p.showBossBar(b.bar);
                 } else {
                     p.hideBossBar(b.bar);
+                }
+                if (b.pack) {
+                    boolean has = packLoaded.contains(p.getUniqueId());
+                    for (Display d : b.displays) {
+                        try {
+                            if (has) {
+                                p.showEntity(plugin, d);
+                            } else {
+                                p.hideEntity(plugin, d);
+                            }
+                        } catch (Throwable ignored) {
+                            // varlık kaldırılmış olabilir
+                        }
+                    }
                 }
             }, null);
         }
@@ -1190,7 +1229,7 @@ public final class BossManager {
         });
 
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-        for (BlockDisplay d : b.displays) {
+        for (Display d : b.displays) {
             Transformation scatter = new Transformation(
                     new Vector3f((float) rnd.nextDouble(-4, 4), (float) rnd.nextDouble(1, 5), (float) rnd.nextDouble(-4, 4)),
                     new Quaternionf().rotateXYZ((float) rnd.nextDouble(-3, 3), (float) rnd.nextDouble(-3, 3), (float) rnd.nextDouble(-3, 3)),
