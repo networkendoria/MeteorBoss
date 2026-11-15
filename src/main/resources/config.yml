@@ -29,7 +29,21 @@ shock-radius: 28
 shock-damage: 2.0
 shock-knockback: 1.4
 
+# Otomatik etkinlik: açıksa sunucu kendi kendine rastgele bir yere meteor düşürür
+auto-event:
+  enabled: false
+  # Etkinlikler arası süre (dakika). cooldown-minutes'tan küçük olmasın
+  interval-minutes: 120
+  # En az kaç oyuncu çevrimiçi olsun
+  min-players: 3
+  # Rastgele bir oyuncunun kaç blok uzağına düşsün (en az / en çok)
+  min-distance: 80
+  max-distance: 200
+  # Dünya spawn noktasının bu kadar yakınına düşmesin
+  avoid-spawn-radius: 300
+
 messages:
+  super-warning: "<dark_purple>⚠ <light_purple><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"
   title: "<gradient:#b46bff:#ff5f3d><bold>☄ METEOR ☄</bold></gradient>"
   subtitle: "<gray>Gökyüzünden bir şey düşüyor..."
   countdown: "<gold>☄ Çarpmaya <white>%s</white> saniye"
@@ -61,6 +75,29 @@ boss:
   strike-damage: 5
   # Saldırılar arası bekleme (saniye)
   attack-cooldown-seconds: 8
+  # Görünüm kalitesi: high (~60 parça), medium (~45), low (~30). Sunucu kasarsa düşür
+  model-quality: high
+  # Süper saldırı "Boşluk Patlaması": hazırlanırken boss'a kimse vuramaz, sonra herkesi savurur
+  super:
+    # Boss çıktıktan kaç saniye sonra ilk süper
+    first-seconds: 300
+    # Süperler arası süre (300 = 5 dakika)
+    interval-seconds: 300
+    # Hazırlanma süresi (kalkan açık)
+    charge-seconds: 5
+    # Patlama yarıçapı (3. evrede radius-phase3)
+    radius: 30
+    radius-phase3: 40
+    # Hasar (2 = 1 kalp, max-hit ile sınırlı) ve savrulma gücü
+    damage: 6
+    knockback: 2.2
+    # Süperden sonra boss kaç saniye yorgun kalsın (yavaş, fazla hasar alır)
+    exhausted-seconds: 5
+    exhausted-bonus-percent: 25
+    # 3. evreye geçince hiç süper yapılmadıysa hemen yapsın
+    force-on-phase3: true
+    # Uyarı yazısı kaç blok yakındakilere görünsün
+    warning-radius: 70
   # Boss barı kaç blok yakındaki oyunculara görünsün
   bar-radius: 150
   # Boss ölünce yere düşen ödüller (EŞYA:ADET)

@@ -28,6 +28,8 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
@@ -50,28 +52,116 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class BossManager {
 
-    /** Görünüm parçası. Ölçüler metre, ayak ortasına göre; kind: 0 normal, 1 damar, 2 göz. */
-    private record Part(Material mat, double cx, double cy, double cz,
-                        double sx, double sy, double sz, int kind) {}
+    // Parça grupları (aynı grup birlikte hareket eder)
+    private static final int G_BODY = 0;
+    private static final int G_ARM_L = 1;
+    private static final int G_ARM_R = 2;
+    private static final int G_LEG_L = 3;
+    private static final int G_LEG_R = 4;
+    private static final int G_HEAD = 5;
+    private static final int G_JAW = 6;
+    private static final int G_CHEST = 7;
+    private static final int G_CRY_L = 8;
+    private static final int G_CRY_R = 9;
+    private static final int GROUPS = 10;
 
-    private static final List<Part> PARTS = List.of(
-            new Part(Material.OBSIDIAN, -0.55, 0.0, 0.0, 0.95, 2.3, 0.95, 0),        // sol bacak
-            new Part(Material.OBSIDIAN, 0.55, 0.0, 0.0, 0.95, 2.3, 0.95, 0),         // sağ bacak
-            new Part(Material.CRYING_OBSIDIAN, 0.0, 2.2, 0.0, 2.5, 2.4, 1.3, 0),     // gövde
-            new Part(Material.OBSIDIAN, 0.0, 4.0, 0.0, 3.9, 0.7, 1.5, 0),            // omuzlar
-            new Part(Material.OBSIDIAN, -2.15, 0.7, 0.0, 0.9, 3.9, 0.9, 0),          // sol kol
-            new Part(Material.OBSIDIAN, 2.15, 0.7, 0.0, 0.9, 3.9, 0.9, 0),           // sağ kol
-            new Part(Material.END_STONE_BRICKS, -2.15, 0.2, 0.15, 1.1, 0.7, 1.1, 0), // sol pençe
-            new Part(Material.END_STONE_BRICKS, 2.15, 0.2, 0.15, 1.1, 0.7, 1.1, 0), // sağ pençe
-            new Part(Material.END_STONE, 0.0, 4.7, 0.0, 1.6, 1.5, 1.5, 0),           // kafatası
-            new Part(Material.END_STONE_BRICKS, -0.6, 6.2, 0.0, 0.3, 1.0, 0.3, 0),   // sol boynuz
-            new Part(Material.END_STONE_BRICKS, 0.6, 6.2, 0.0, 0.3, 1.0, 0.3, 0),    // sağ boynuz
-            new Part(Material.AMETHYST_BLOCK, -0.4, 5.35, 0.76, 0.4, 0.25, 0.1, 2),  // sol göz
-            new Part(Material.AMETHYST_BLOCK, 0.4, 5.35, 0.76, 0.4, 0.25, 0.1, 2),   // sağ göz
-            new Part(Material.AMETHYST_BLOCK, -0.6, 2.4, 0.67, 0.12, 1.9, 0.06, 1),  // damarlar
-            new Part(Material.AMETHYST_BLOCK, 0.0, 2.4, 0.67, 0.12, 1.9, 0.06, 1),
-            new Part(Material.AMETHYST_BLOCK, 0.6, 2.4, 0.67, 0.12, 1.9, 0.06, 1)
-    );
+    /**
+     * Görünüm parçası. Ölçüler metre, ayak ortasına göre, cy = alt kenar.
+     * kind: 0 normal, 1 damar, 2 göz, 3 süs kristali, 4 çatlak (parlar).
+     * roll: kendi ekseninde eğim (radyan). minPhase: bu evreye gelince görünür.
+     * detail: 0 her kalitede, 1 orta ve yüksek, 2 sadece yüksek.
+     */
+    private record Part(Material mat, double cx, double cy, double cz,
+                        double sx, double sy, double sz,
+                        int kind, int group, double roll, int minPhase, int detail) {}
+
+    private static final List<Part> PARTS = buildParts();
+
+    private static void mirror(List<Part> l, Material m, double cx, double cy, double cz,
+                               double sx, double sy, double sz, int kind, int gl, int gr,
+                               double roll, int minPhase, int detail) {
+        l.add(new Part(m, -cx, cy, cz, sx, sy, sz, kind, gl, roll, minPhase, detail));
+        l.add(new Part(m, cx, cy, cz, sx, sy, sz, kind, gr, -roll, minPhase, detail));
+    }
+
+    private static Part one(Material m, double cx, double cy, double cz,
+                            double sx, double sy, double sz, int kind, int group,
+                            double roll, int minPhase, int detail) {
+        return new Part(m, cx, cy, cz, sx, sy, sz, kind, group, roll, minPhase, detail);
+    }
+
+    private static List<Part> buildParts() {
+        List<Part> l = new ArrayList<>();
+        Material obs = Material.OBSIDIAN;
+        Material cry = Material.CRYING_OBSIDIAN;
+        Material end = Material.END_STONE;
+        Material brick = Material.END_STONE_BRICKS;
+        Material ame = Material.AMETHYST_BLOCK;
+        Material mag = Material.MAGMA_BLOCK;
+        Material cluster = Material.AMETHYST_CLUSTER;
+
+        // Bacaklar
+        mirror(l, obs, 0.6, 0.45, 0.0, 1.0, 1.75, 1.0, 0, G_LEG_L, G_LEG_R, 0, 1, 0);
+        mirror(l, obs, 0.6, 0.0, 0.25, 1.15, 0.45, 1.5, 0, G_LEG_L, G_LEG_R, 0, 1, 0);
+        mirror(l, cry, 0.6, 1.0, 0.55, 0.9, 0.55, 0.25, 0, G_LEG_L, G_LEG_R, 0, 1, 1);
+        mirror(l, ame, 0.6, 0.5, 0.52, 0.1, 1.5, 0.05, 1, G_LEG_L, G_LEG_R, 0, 1, 1);
+
+        // Kalça ve karın
+        l.add(one(obs, 0.0, 1.9, 0.0, 2.5, 0.5, 1.3, 0, G_BODY, 0, 1, 0));
+        l.add(one(cry, 0.0, 2.4, 0.0, 2.0, 1.0, 1.1, 0, G_BODY, 0, 1, 0));
+        l.add(one(ame, 0.0, 2.5, 0.56, 0.12, 0.9, 0.05, 1, G_BODY, 0, 1, 0));
+
+        // Göğüs: X şeklinde parlayan damarlar
+        l.add(one(obs, 0.0, 3.35, 0.0, 2.8, 1.35, 1.4, 0, G_CHEST, 0, 1, 0));
+        l.add(one(ame, 0.0, 3.28, 0.72, 0.12, 1.5, 0.05, 1, G_CHEST, 0.62, 1, 0));
+        l.add(one(ame, 0.0, 3.28, 0.72, 0.12, 1.5, 0.05, 1, G_CHEST, -0.62, 1, 0));
+        l.add(one(cry, 0.0, 3.7, 0.7, 1.4, 0.7, 0.12, 0, G_CHEST, 0, 1, 1));
+
+        // Omuz zırhı, kollar, yumruklar, parmaklar
+        mirror(l, obs, 2.05, 4.2, 0.0, 1.5, 0.95, 1.7, 0, G_ARM_L, G_ARM_R, 0, 1, 0);
+        mirror(l, obs, 2.3, 5.1, 0.0, 0.4, 0.7, 0.4, 0, G_ARM_L, G_ARM_R, 0, 1, 2);
+        mirror(l, obs, 2.15, 1.0, 0.0, 0.95, 3.3, 0.95, 0, G_ARM_L, G_ARM_R, 0, 1, 0);
+        mirror(l, ame, 2.15, 1.5, 0.5, 0.1, 2.0, 0.05, 1, G_ARM_L, G_ARM_R, 0, 1, 1);
+        mirror(l, obs, 2.15, 0.1, 0.1, 1.35, 1.0, 1.3, 0, G_ARM_L, G_ARM_R, 0, 1, 0);
+        for (double fx : new double[]{-0.4, 0.0, 0.4}) {
+            mirror(l, obs, 2.15 + fx, 0.0, 0.65, 0.28, 0.5, 0.28, 0, G_ARM_L, G_ARM_R, 0, 1, 2);
+        }
+
+        // Kafatası, gözler, burun, boynuzlar
+        l.add(one(end, 0.0, 4.7, 0.05, 1.7, 1.45, 1.6, 0, G_HEAD, 0, 1, 0));
+        l.add(one(brick, 0.0, 6.05, 0.0, 1.0, 0.25, 1.0, 0, G_HEAD, 0, 1, 1));
+        mirror(l, obs, 0.42, 5.3, 0.86, 0.55, 0.45, 0.06, 0, G_HEAD, G_HEAD, 0, 1, 0);
+        mirror(l, ame, 0.42, 5.34, 0.9, 0.4, 0.32, 0.06, 2, G_HEAD, G_HEAD, 0, 1, 0);
+        l.add(one(obs, 0.0, 4.95, 0.86, 0.3, 0.35, 0.06, 0, G_HEAD, 0, 1, 0));
+        mirror(l, brick, 0.75, 6.1, 0.0, 0.4, 0.7, 0.4, 0, G_HEAD, G_HEAD, 0.25, 1, 0);
+        mirror(l, brick, 1.05, 6.7, 0.0, 0.28, 0.65, 0.28, 0, G_HEAD, G_HEAD, 0.55, 1, 0);
+
+        // Çene ve dişler
+        l.add(one(brick, 0.0, 4.35, 0.2, 1.3, 0.35, 1.2, 0, G_JAW, 0, 1, 0));
+        for (double tx : new double[]{-0.45, -0.15, 0.15, 0.45}) {
+            l.add(one(end, tx, 4.62, 0.75, 0.18, 0.3, 0.12, 0, G_JAW, 0, 1, 2));
+        }
+
+        // Omuz yanlarında süs kristalleri
+        mirror(l, cluster, 2.0, 5.1, -0.35, 1.3, 2.0, 1.3, 3, G_CRY_L, G_CRY_R, 0, 1, 0);
+        mirror(l, cluster, 2.55, 4.9, 0.3, 0.8, 1.2, 0.8, 3, G_CRY_L, G_CRY_R, 0.4, 1, 1);
+
+        // Çatlaklar ve kor (evre 2 ve 3'te görünür)
+        l.add(one(mag, -0.8, 3.5, 0.72, 0.45, 0.5, 0.05, 4, G_CHEST, 0.2, 2, 1));
+        l.add(one(mag, 0.9, 3.85, 0.72, 0.4, 0.35, 0.05, 4, G_CHEST, -0.3, 2, 1));
+        l.add(one(mag, 0.4, 2.6, 0.57, 0.35, 0.45, 0.05, 4, G_BODY, 0.2, 3, 1));
+        l.add(one(mag, -2.15, 2.0, 0.49, 0.5, 0.7, 0.05, 4, G_ARM_L, 0, 2, 2));
+        l.add(one(mag, 2.15, 3.0, 0.49, 0.5, 0.7, 0.05, 4, G_ARM_R, 0, 2, 2));
+        mirror(l, mag, 0.6, 0.9, 0.52, 0.4, 0.6, 0.05, 4, G_LEG_L, G_LEG_R, 0, 3, 2);
+        l.add(one(obs, 0.3, 5.5, 0.9, 0.08, 0.6, 0.05, 0, G_HEAD, 0.4, 2, 2));
+        return List.copyOf(l);
+    }
+
+    private static final Vector3f PIVOT_ARM_L = new Vector3f(-2.15f, 4.3f, 0f);
+    private static final Vector3f PIVOT_ARM_R = new Vector3f(2.15f, 4.3f, 0f);
+    private static final Vector3f PIVOT_LEG_L = new Vector3f(-0.6f, 2.2f, 0f);
+    private static final Vector3f PIVOT_LEG_R = new Vector3f(0.6f, 2.2f, 0f);
+    private static final Vector3f PIVOT_HEAD = new Vector3f(0f, 4.6f, 0f);
 
     private static final Set<DamageCause> IMMUNE = EnumSet.of(
             DamageCause.SUFFOCATION, DamageCause.DROWNING, DamageCause.FALL, DamageCause.CRAMMING,
@@ -109,16 +199,28 @@ public final class BossManager {
         Zombie body;
         UUID bodyId;
         BossBar bar;
+        final List<Part> parts = new ArrayList<>();
         final List<BlockDisplay> displays = new ArrayList<>();
         final List<EnderCrystal> crystals = new CopyOnWriteArrayList<>();
         final Map<UUID, Double> damage = new ConcurrentHashMap<>();
+
         volatile boolean emerging = true;
         volatile boolean removing = false;
         volatile boolean healing = false;
+        volatile boolean shield = false;
         volatile int phase = 1;
         volatile int tick = 0;
         volatile int lastHitTick = 0;
+        volatile int superState = 0; // 0 bekliyor, 1 hazırlanıyor, 2 yorgun
+        volatile boolean swingFlag = false;
+        volatile boolean poseNow = false;
+        volatile boolean forcePose = false;
+        volatile int flinch = 0;
+        volatile int roarTicks = 0;
+        volatile int lastDing = -100;
+        volatile int lastHurt = -100;
         volatile Location lastLoc;
+
         double maxHealth;
         double healed;
         double healCap;
@@ -130,6 +232,23 @@ public final class BossManager {
         int stuck;
         int errors;
         Location lastSync;
+
+        // Süper saldırı
+        int superTimer;
+        int superLeft;
+        int superTotal;
+        int superCount;
+        int exhaustLeft;
+
+        // Poz ve animasyon
+        Location poseLast;
+        boolean moving;
+        boolean swingRight;
+        double raiseL, raiseR, headE, jawE;
+        double aArmL, aArmR, aLegL, aLegR, aHead, aJaw, breath, bobL, bobR;
+        final long[] sig = new long[GROUPS];
+        double orbit;
+        int nextAmbient = 200;
 
         Boss(Session session, World world, Location home) {
             this.session = session;
@@ -185,24 +304,33 @@ public final class BossManager {
             nb.body = z;
             nb.bodyId = z.getUniqueId();
 
-            for (Part p : PARTS) {
+            int level = switch (cfg.getString("boss.model-quality", "high").toLowerCase()) {
+                case "low" -> 0;
+                case "medium" -> 1;
+                default -> 2;
+            };
+            for (Part pt : PARTS) {
+                if (pt.detail() > level) {
+                    continue;
+                }
                 BlockDisplay d = world.spawn(home, BlockDisplay.class, dd -> {
-                    dd.setBlock(p.mat().createBlockData());
-                    dd.setTransformation(transform(p, 0.05));
+                    dd.setBlock(pt.mat().createBlockData());
+                    dd.setTransformation(buildTransform(pt, nb, 0.05));
                     dd.setPersistent(false);
                     dd.setInterpolationDuration(4);
                     dd.setTeleportDuration(3);
                     dd.setViewRange(3.0f);
-                    if (p.kind() != 0) {
+                    if (pt.kind() != 0) {
                         dd.setBrightness(new Display.Brightness(15, 15));
                     }
                 });
+                nb.parts.add(pt);
                 nb.displays.add(d);
             }
 
             nb.bar = BossBar.bossBar(barTitle(nb), 1.0f, BossBar.Color.PURPLE, BossBar.Overlay.NOTCHED_10);
             boss = nb;
-            plugin.log("Typhon çıkıyor (can: " + (int) nb.maxHealth + ").");
+            plugin.log("Typhon çıkıyor (can: " + (int) nb.maxHealth + ", parça: " + nb.displays.size() + ").");
 
             world.playSound(home, Sound.ENTITY_WITHER_SPAWN, SoundCategory.HOSTILE, 12.0f, 0.5f);
             z.getScheduler().runAtFixedRate(plugin, task -> tick(nb, task), () -> finishBoss(nb, false), 1L, 1L);
@@ -229,6 +357,7 @@ public final class BossManager {
         z.setPersistent(false);
         z.setCanPickupItems(false);
         z.setInvisible(true);
+        z.setSilent(true); // zombi sesi yok, Typhon'un kendi sesleri var
         z.setAI(false);
         z.setInvulnerable(true);
         z.customName(mm.deserialize("<light_purple>Typhon"));
@@ -245,17 +374,177 @@ public final class BossManager {
         }
     }
 
-    private static Transformation transform(Part p, double k) {
-        return new Transformation(
-                new Vector3f((float) ((p.cx() - p.sx() / 2) * k), (float) (p.cy() * k), (float) ((p.cz() - p.sz() / 2) * k)),
-                new Quaternionf(),
-                new Vector3f((float) (p.sx() * k), (float) (p.sy() * k), (float) (p.sz() * k)),
-                new Quaternionf());
-    }
-
     private Component barTitle(Boss b) {
         return mm.deserialize(plugin.getConfig().getString("messages.bossbar", "<light_purple>Typhon")
                 .replace("%phase%", String.valueOf(b.phase)));
+    }
+
+    private void snd(Boss b, Sound sound, float volume, float pitch) {
+        b.world.playSound(b.lastLoc, sound, SoundCategory.HOSTILE, volume, pitch);
+    }
+
+    // ------------------------------------------------------------------ model ve poz
+
+    private static Vector3f pivotOf(int group) {
+        return switch (group) {
+            case G_ARM_L -> PIVOT_ARM_L;
+            case G_ARM_R -> PIVOT_ARM_R;
+            case G_LEG_L -> PIVOT_LEG_L;
+            case G_LEG_R -> PIVOT_LEG_R;
+            case G_HEAD, G_JAW -> PIVOT_HEAD;
+            default -> null;
+        };
+    }
+
+    private static double angleOf(Boss b, int group) {
+        return switch (group) {
+            case G_ARM_L -> b.aArmL;
+            case G_ARM_R -> b.aArmR;
+            case G_LEG_L -> b.aLegL;
+            case G_LEG_R -> b.aLegR;
+            case G_HEAD -> b.aHead;
+            case G_JAW -> b.aHead + b.aJaw;
+            default -> 0.0;
+        };
+    }
+
+    /** Bir parçanın o anki duruşa göre dönüşümü. k: büyüme (çıkış sahnesinde 0..1). */
+    private static Transformation buildTransform(Part p, Boss b, double k) {
+        boolean hidden = b.phase < p.minPhase();
+        double sy = p.sy();
+        double bottom = p.cy();
+        if (p.group() == G_CHEST) {
+            sy = p.sy() * (1.0 + b.breath);
+        }
+        if (p.group() == G_CRY_L) {
+            bottom += b.bobL;
+        } else if (p.group() == G_CRY_R) {
+            bottom += b.bobR;
+        }
+
+        Vector3f half = new Vector3f((float) (p.sx() / 2), (float) (sy / 2), (float) (p.sz() / 2));
+        Vector3f center = new Vector3f((float) p.cx(), (float) (bottom + sy / 2), (float) p.cz());
+        Quaternionf q0 = new Quaternionf();
+        if (p.roll() != 0) {
+            q0.rotateZ((float) p.roll());
+        }
+        Vector3f t = new Vector3f(center).sub(q0.transform(new Vector3f(half)));
+        Quaternionf q = q0;
+
+        Vector3f pivot = pivotOf(p.group());
+        double angle = angleOf(b, p.group());
+        if (pivot != null && Math.abs(angle) > 1e-4) {
+            Quaternionf qp = new Quaternionf().rotateX((float) angle);
+            t.sub(pivot);
+            qp.transform(t);
+            t.add(pivot);
+            q = new Quaternionf(qp).mul(q0);
+        }
+
+        if (hidden) {
+            return new Transformation(new Vector3f(center).mul((float) k), new Quaternionf(),
+                    new Vector3f(0.001f, 0.001f, 0.001f), new Quaternionf());
+        }
+        float kk = (float) k;
+        return new Transformation(t.mul(kk), q,
+                new Vector3f((float) p.sx() * kk, (float) sy * kk, (float) p.sz() * kk), new Quaternionf());
+    }
+
+    /** Hedef duruşu hesaplar ve değişen grupların parçalarını günceller. */
+    private void updatePose(Boss b, int t, boolean force, double k) {
+        Location bl = b.lastLoc;
+        b.moving = b.poseLast != null && b.poseLast.getWorld() == bl.getWorld()
+                && b.poseLast.distanceSquared(bl) > 0.01;
+        b.poseLast = bl.clone();
+        double swing = b.moving ? Math.sin(t * 0.3) * 0.55 : 0.0;
+
+        double tgtL = 0.0;
+        double tgtR = 0.0;
+        double tgtHead = 0.0;
+        double tgtJaw = 0.0;
+        Attack a = b.attack;
+        if (b.superState == 1) {
+            tgtL = 2.7;
+            tgtR = 2.7;
+            tgtHead = -0.5;
+            tgtJaw = 0.5;
+        } else if (b.superState == 2) {
+            tgtHead = 0.35;
+        } else if (a != null && a.type == 1) {
+            tgtL = 2.6;
+            tgtR = 2.6;
+            tgtHead = -0.2;
+        } else if (a != null && a.type == 2) {
+            tgtR = 1.6;
+            tgtHead = -0.1;
+        }
+        if (b.roarTicks > 0) {
+            tgtHead -= 0.5;
+            tgtJaw = Math.max(tgtJaw, 0.6);
+            b.roarTicks -= 3;
+        }
+        if (b.flinch > 0) {
+            tgtHead += 0.2;
+            b.flinch -= 3;
+        }
+        if (b.swingFlag) {
+            b.swingFlag = false;
+            if (b.swingRight) {
+                b.raiseR = 1.5;
+            } else {
+                b.raiseL = 1.5;
+            }
+            b.swingRight = !b.swingRight;
+        }
+
+        b.raiseL += (tgtL - b.raiseL) * 0.45;
+        b.raiseR += (tgtR - b.raiseR) * 0.45;
+        b.headE += (tgtHead - b.headE) * 0.5;
+        b.jawE += (tgtJaw - b.jawE) * 0.5;
+        b.aArmL = -b.raiseL + swing;
+        b.aArmR = -b.raiseR - swing;
+        b.aLegL = -swing * 0.8;
+        b.aLegR = swing * 0.8;
+        b.aHead = b.headE;
+        b.aJaw = b.jawE;
+        b.breath = 0.025 * Math.sin(t * 0.09);
+        b.bobL = 0.18 * Math.sin(t * 0.08);
+        b.bobR = 0.18 * Math.sin(t * 0.08 + 2.0);
+
+        long[] sig = new long[GROUPS];
+        sig[G_BODY] = 0;
+        sig[G_ARM_L] = Math.round(b.aArmL * 50);
+        sig[G_ARM_R] = Math.round(b.aArmR * 50);
+        sig[G_LEG_L] = Math.round(b.aLegL * 50);
+        sig[G_LEG_R] = Math.round(b.aLegR * 50);
+        sig[G_HEAD] = Math.round(b.aHead * 50);
+        sig[G_JAW] = Math.round((b.aHead + b.aJaw) * 50);
+        sig[G_CHEST] = Math.round(b.breath * 1000);
+        sig[G_CRY_L] = Math.round(b.bobL * 50);
+        sig[G_CRY_R] = Math.round(b.bobR * 50);
+
+        boolean[] changed = new boolean[GROUPS];
+        for (int g = 0; g < GROUPS; g++) {
+            changed[g] = force || sig[g] != b.sig[g];
+            b.sig[g] = sig[g];
+        }
+
+        for (int i = 0; i < b.parts.size(); i++) {
+            Part pt = b.parts.get(i);
+            if (!changed[pt.group()]) {
+                continue;
+            }
+            BlockDisplay d = b.displays.get(i);
+            if (!d.isValid()) {
+                continue;
+            }
+            Transformation tr = buildTransform(pt, b, k);
+            d.getScheduler().run(plugin, x -> {
+                d.setInterpolationDelay(0);
+                d.setInterpolationDuration(4);
+                d.setTransformation(tr);
+            }, null);
+        }
     }
 
     // ------------------------------------------------------------------ döngü
@@ -278,7 +567,9 @@ public final class BossManager {
             b.lastLoc = bl;
             FileConfiguration cfg = plugin.getConfig();
 
-            syncParts(b, bl);
+            if (b.emerging || t % 2 == 0) {
+                syncParts(b, bl);
+            }
 
             if (b.emerging) {
                 emergeTick(b, cfg, t, bl);
@@ -290,7 +581,7 @@ public final class BossManager {
             int ph = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3;
             if (ph != b.phase) {
                 b.phase = ph;
-                onPhase(b, bl);
+                onPhase(b, cfg, bl);
             }
             if (t % 5 == 0) {
                 b.bar.progress((float) Math.max(0.0, Math.min(1.0, frac)));
@@ -299,18 +590,25 @@ public final class BossManager {
                 refreshBar(b);
             }
 
+            if (t % 3 == 0 || b.poseNow) {
+                b.poseNow = false;
+                updatePose(b, t, b.forcePose, 1.0);
+                b.forcePose = false;
+            }
+
             orbitCrystals(b, bl, t);
             healTick(b, cfg, t, health);
-            if (t % 2 == 0) {
-                roamTick(b, cfg, bl);
-            }
-            if (t % 20 == 0) {
-                stuckTick(b, bl);
-            }
-            attackTick(b, cfg, bl);
+            ambientTick(b, bl, t);
 
-            if (t % 6 == 0) {
-                b.world.spawnParticle(Particle.PORTAL, bl.clone().add(0, 0.3, 0), 6, 0.8, 0.1, 0.8, 0.05, null, true);
+            boolean busy = superTick(b, cfg, bl, t);
+            if (!busy) {
+                if (t % 2 == 0) {
+                    roamTick(b, cfg, bl);
+                }
+                if (t % 20 == 0) {
+                    stuckTick(b, bl);
+                }
+                attackTick(b, cfg, bl);
             }
         } catch (Throwable e) {
             plugin.logError("Boss döngüsünde hata", e);
@@ -326,28 +624,32 @@ public final class BossManager {
         double k = Math.min(1.0, t / (double) emergeTicks);
 
         if (t % 4 == 0 || t >= emergeTicks) {
-            for (int i = 0; i < PARTS.size(); i++) {
-                BlockDisplay d = b.displays.get(i);
-                Transformation tr = transform(PARTS.get(i), Math.max(0.05, k));
-                d.getScheduler().run(plugin, x -> d.setTransformation(tr), null);
-            }
+            updatePose(b, t, true, Math.max(0.05, k));
         }
         b.world.spawnParticle(Particle.PORTAL, b.home, 40, 2.5, 3.0 * k + 0.5, 2.5, 0.3, null, true);
         b.world.spawnParticle(Particle.END_ROD, b.home.clone().add(0, 3 * k, 0), 6, 1.0, 1.5, 1.0, 0.05, null, true);
         if (t % 20 == 0) {
-            b.world.playSound(b.home, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 10.0f, 0.5f + (float) k * 0.4f);
+            snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, 10.0f, 0.5f + (float) k * 0.4f);
+        }
+        if (t % 10 == 0) {
+            snd(b, Sound.BLOCK_STONE_BREAK, 4.0f, 0.5f);
         }
 
         if (t >= emergeTicks) {
             b.emerging = false;
             b.lastHitTick = t;
             b.cooldown = 100;
+            b.nextAmbient = t + 100;
+            b.superTimer = Math.max(20, cfg.getInt("boss.super.first-seconds", 300) * 20);
+            b.roarTicks = 30;
+            b.poseNow = true;
             b.body.setAI(true);
             b.body.setInvulnerable(false);
             spawnCrystals(b);
             refreshBar(b);
             b.world.spawnParticle(Particle.EXPLOSION_EMITTER, b.home, 6, 2, 1, 2, 0, null, true);
-            b.world.playSound(b.home, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 12.0f, 0.5f);
+            snd(b, Sound.ENTITY_GENERIC_EXPLODE, 12.0f, 0.5f);
+            snd(b, Sound.ENTITY_RAVAGER_ROAR, 12.0f, 0.4f);
             plugin.log("Typhon hazır.");
         }
     }
@@ -379,19 +681,21 @@ public final class BossManager {
     }
 
     private void orbitCrystals(Boss b, Location bl, int t) {
+        b.orbit += b.superState == 1 ? 0.18 : 0.05;
         int i = 0;
         for (EnderCrystal c : b.crystals) {
             if (!c.isValid()) {
                 continue;
             }
-            double a = t * 0.05 + i * Math.PI / 2;
+            double a = b.orbit + i * Math.PI / 2;
             Location at = new Location(b.world,
                     bl.getX() + Math.cos(a) * 3.6,
                     bl.getY() + 5.0 + Math.sin(t * 0.1 + i) * 0.4,
                     bl.getZ() + Math.sin(a) * 3.6);
             c.teleportAsync(at);
             if (t % 5 == 0) {
-                c.setBeamTarget(b.healing ? bl.clone().add(0, 3.2, 0) : null);
+                boolean beam = b.healing || b.superState == 1;
+                c.setBeamTarget(beam ? bl.clone().add(0, 3.2, 0) : null);
             }
             i++;
         }
@@ -416,6 +720,32 @@ public final class BossManager {
                 b.body.setHealth(Math.min(b.maxHealth, health + amount));
                 b.healed += amount;
                 b.world.spawnParticle(Particle.END_ROD, b.lastLoc.clone().add(0, 3, 0), 30, 1.2, 2.0, 1.2, 0.05, null, true);
+            }
+        }
+    }
+
+    /** Kendi sesleri: nefes/hırlama, ayak sesi, ayak dibinde toz. */
+    private void ambientTick(Boss b, Location bl, int t) {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        if (t >= b.nextAmbient) {
+            b.nextAmbient = t + 120 + rnd.nextInt(100);
+            if (b.phase >= 3 && rnd.nextBoolean()) {
+                snd(b, Sound.ENTITY_RAVAGER_ROAR, 5.0f, 0.5f);
+            } else {
+                snd(b, Sound.ENTITY_WITHER_AMBIENT, 4.0f, b.phase >= 2 ? 0.45f : 0.55f);
+            }
+        }
+        if (b.moving && t % 12 == 0) {
+            snd(b, Sound.ENTITY_IRON_GOLEM_STEP, 3.0f, 0.5f);
+            snd(b, Sound.ENTITY_RAVAGER_STEP, 2.0f, 0.5f);
+            b.world.spawnParticle(Particle.LARGE_SMOKE, bl.clone().add(0, 0.2, 0), 6, 0.8, 0.1, 0.8, 0.01, null, true);
+        }
+        if (t % 4 == 0) {
+            if (b.phase >= 2) {
+                b.world.spawnParticle(Particle.FLAME, bl.clone().add(0, 0.2, 0), 3, 0.9, 0.1, 0.9, 0.01, null, true);
+            } else {
+                Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(150, 90, 200), 1.6f);
+                b.world.spawnParticle(Particle.DUST, bl.clone().add(0, 0.2, 0), 4, 0.9, 0.1, 0.9, 0, dust, true);
             }
         }
     }
@@ -475,6 +805,158 @@ public final class BossManager {
         }
     }
 
+    // ------------------------------------------------------------------ süper saldırı
+
+    private double blastRadius(Boss b, FileConfiguration cfg) {
+        return b.phase >= 3 ? cfg.getDouble("boss.super.radius-phase3", 40.0)
+                : cfg.getDouble("boss.super.radius", 30.0);
+    }
+
+    /** true dönerse süper hazırlığı sürüyor, normal davranışlar durur. */
+    private boolean superTick(Boss b, FileConfiguration cfg, Location bl, int t) {
+        if (b.superState == 1) {
+            chargeTick(b, cfg, bl, t);
+            return true;
+        }
+        if (b.superState == 2) {
+            if (--b.exhaustLeft <= 0) {
+                b.superState = 0;
+                setBase(b.body, Attribute.MOVEMENT_SPEED, b.baseSpeed * (1.0 + 0.15 * (b.phase - 1)));
+                b.poseNow = true;
+            } else if (t % 10 == 0) {
+                b.world.spawnParticle(Particle.LARGE_SMOKE, bl.clone().add(0, 3, 0), 12, 1.2, 2.0, 1.2, 0.02, null, true);
+            }
+            return false;
+        }
+        if (b.superTimer > 0) {
+            b.superTimer--;
+            return false;
+        }
+        if (b.attack != null) {
+            return false;
+        }
+        startSuper(b, cfg, bl);
+        return true;
+    }
+
+    private void startSuper(Boss b, FileConfiguration cfg, Location bl) {
+        b.superState = 1;
+        b.superTotal = Math.max(20, cfg.getInt("boss.super.charge-seconds", 5) * 20);
+        b.superLeft = b.superTotal;
+        b.shield = true;
+        b.attack = null;
+        b.superCount++;
+        b.body.setTarget(null);
+        b.body.setAI(false);
+        b.poseNow = true;
+        snd(b, Sound.ENTITY_RAVAGER_ROAR, 14.0f, 0.4f);
+        warnPlayers(b, cfg);
+        plugin.log("Typhon süper saldırıya hazırlanıyor.");
+    }
+
+    private void chargeTick(Boss b, FileConfiguration cfg, Location bl, int t) {
+        b.superLeft--;
+        double progress = 1.0 - b.superLeft / (double) b.superTotal;
+        double radius = blastRadius(b, cfg);
+
+        if (t % 2 == 0) {
+            shieldBubble(b, bl);
+        }
+        if (t % 3 == 0) {
+            drawRing(b.world, bl, Math.max(2.0, radius * progress), progress);
+        }
+        b.world.spawnParticle(Particle.PORTAL, bl.clone().add(0, 3, 0), 40, 3, 3, 3, 0.8, null, true);
+        if (b.superLeft % 20 == 0 && b.superLeft > 0) {
+            snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, 10.0f, 0.5f + 0.4f * (float) progress);
+            warnPlayers(b, cfg);
+        }
+        if (b.superLeft <= 0) {
+            blast(b, cfg, bl);
+        }
+    }
+
+    private void blast(Boss b, FileConfiguration cfg, Location bl) {
+        double radius = blastRadius(b, cfg);
+        double maxHit = cfg.getDouble("boss.max-hit", 10.0);
+        double damage = Math.min(cfg.getDouble("boss.super.damage", 6.0), maxHit);
+        double power = cfg.getDouble("boss.super.knockback", 2.2);
+        World world = b.world;
+        Location c = bl.clone();
+
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, c.clone().add(0, 1, 0), 20, 4, 2, 4, 0, null, true);
+        world.spawnParticle(Particle.FLAME, c.clone().add(0, 1, 0), 800, 8, 3, 8, 0.4, null, true);
+        world.spawnParticle(Particle.END_ROD, c.clone().add(0, 2, 0), 300, 8, 4, 8, 0.5, null, true);
+        world.spawnParticle(Particle.LARGE_SMOKE, c.clone().add(0, 1, 0), 400, 8, 3, 8, 0.2, null, true);
+        for (double r = 3.0; r <= radius; r += 3.0) {
+            drawRing(world, c, r, 1.0);
+        }
+        snd(b, Sound.ENTITY_GENERIC_EXPLODE, 16.0f, 0.5f);
+        snd(b, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 16.0f, 0.5f);
+        snd(b, Sound.ENTITY_RAVAGER_ROAR, 14.0f, 0.3f);
+
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.getScheduler().run(plugin, tt -> {
+                if (!p.getWorld().equals(world)) {
+                    return;
+                }
+                Location pl = p.getLocation();
+                double dist = pl.distance(c);
+                if (dist > radius) {
+                    return;
+                }
+                Vector away = pl.toVector().subtract(c.toVector()).setY(0);
+                if (away.lengthSquared() < 0.01) {
+                    away = new Vector(1, 0, 0);
+                }
+                double factor = Math.max(0.0, 1.0 - dist / radius);
+                p.damage(damage);
+                p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 120, 0));
+                p.setVelocity(away.normalize().multiply(power * (0.6 + factor)).setY(0.9 + 0.5 * factor));
+            }, null);
+        }
+
+        // Kalkan iner, Typhon yorulur
+        b.shield = false;
+        b.superState = 2;
+        b.exhaustLeft = Math.max(20, cfg.getInt("boss.super.exhausted-seconds", 5) * 20);
+        b.superTimer = Math.max(20, cfg.getInt("boss.super.interval-seconds", 300) * 20);
+        b.cooldown = b.exhaustLeft + 40;
+        b.roarTicks = 30;
+        b.poseNow = true;
+        b.body.setAI(true);
+        setBase(b.body, Attribute.MOVEMENT_SPEED, b.baseSpeed * 0.4);
+        plugin.log("Typhon süper saldırıyı yaptı (" + b.superCount + ").");
+    }
+
+    private void shieldBubble(Boss b, Location bl) {
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(170, 80, 255), 1.5f);
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        for (int i = 0; i < 36; i++) {
+            double u = rnd.nextDouble() * 2 - 1;
+            double a = rnd.nextDouble() * Math.PI * 2;
+            double r = Math.sqrt(1 - u * u);
+            Location l = new Location(b.world,
+                    bl.getX() + r * Math.cos(a) * 3.0,
+                    bl.getY() + 3.0 + u * 3.4,
+                    bl.getZ() + r * Math.sin(a) * 3.0);
+            b.world.spawnParticle(Particle.DUST, l, 1, 0, 0, 0, 0, dust, true);
+        }
+    }
+
+    private void warnPlayers(Boss b, FileConfiguration cfg) {
+        Component msg = mm.deserialize(cfg.getString("messages.super-warning",
+                "<dark_purple>⚠ <light_purple><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"));
+        double r = cfg.getDouble("boss.super.warning-radius", 70.0);
+        Location at = b.lastLoc;
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.getScheduler().run(plugin, t -> {
+                if (p.getWorld().equals(b.world) && p.getLocation().distanceSquared(at) <= r * r) {
+                    p.sendActionBar(msg);
+                }
+            }, null);
+        }
+    }
+
     // ------------------------------------------------------------------ saldırılar
 
     private void attackTick(Boss b, FileConfiguration cfg, Location bl) {
@@ -504,13 +986,15 @@ public final class BossManager {
             }
             if (!centers.isEmpty()) {
                 b.attack = new Attack(2, b.phase >= 3 ? 30 : 36, centers, 3.0, strikeDamage);
-                b.world.playSound(bl, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 8.0f, 1.2f);
+                b.poseNow = true;
+                snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, 8.0f, 1.2f);
                 return;
             }
         }
         double radius = b.phase >= 3 ? 9.0 : 7.0;
         b.attack = new Attack(1, b.phase >= 3 ? 24 : 30, List.of(bl.clone()), radius, slamDamage);
-        b.world.playSound(bl, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 8.0f, 0.6f);
+        b.poseNow = true;
+        snd(b, Sound.ENTITY_RAVAGER_ROAR, 9.0f, 0.5f);
     }
 
     private void runAttack(Boss b, FileConfiguration cfg) {
@@ -535,6 +1019,9 @@ public final class BossManager {
             hurt(b.world, c, a.radius, Math.min(a.damage, maxHit));
         }
         b.attack = null;
+        b.raiseL = 0.0; // kollar hızla iner
+        b.raiseR = 0.0;
+        b.poseNow = true;
         int seconds = Math.max(2, cfg.getInt("boss.attack-cooldown-seconds", 8));
         double factor = b.phase == 1 ? 1.0 : b.phase == 2 ? 0.75 : 0.5;
         b.cooldown = (int) (seconds * 20 * factor);
@@ -575,22 +1062,37 @@ public final class BossManager {
 
     // ------------------------------------------------------------------ evre ve bar
 
-    private void onPhase(Boss b, Location bl) {
+    private void onPhase(Boss b, FileConfiguration cfg, Location bl) {
         if (b.phase >= 2) {
             Material red = Material.REDSTONE_BLOCK;
-            for (int i = 0; i < PARTS.size(); i++) {
-                if (PARTS.get(i).kind() != 0) {
-                    BlockDisplay d = b.displays.get(i);
+            for (int i = 0; i < b.parts.size(); i++) {
+                Part pt = b.parts.get(i);
+                BlockDisplay d = b.displays.get(i);
+                if (pt.kind() == 1 || pt.kind() == 2) {
                     d.getScheduler().run(plugin, x -> d.setBlock(red.createBlockData()), null);
+                } else if (pt.kind() == 3) {
+                    d.getScheduler().run(plugin, x -> {
+                        d.setGlowing(true);
+                        d.setGlowColorOverride(Color.RED);
+                    }, null);
                 }
             }
         }
-        setBase(b.body, Attribute.MOVEMENT_SPEED, b.baseSpeed * (1.0 + 0.15 * (b.phase - 1)));
+        b.forcePose = true; // çatlaklar görünür olsun
+        b.poseNow = true;
+        b.roarTicks = 30;
+        if (b.superState != 2) {
+            setBase(b.body, Attribute.MOVEMENT_SPEED, b.baseSpeed * (1.0 + 0.15 * (b.phase - 1)));
+        }
+        if (b.phase == 3 && b.superCount == 0 && cfg.getBoolean("boss.super.force-on-phase3", true)) {
+            b.superTimer = Math.min(b.superTimer, 100);
+        }
         b.bar.color(b.phase >= 3 ? BossBar.Color.RED : BossBar.Color.PINK);
         b.bar.name(barTitle(b));
         b.world.spawnParticle(Particle.EXPLOSION_EMITTER, bl.clone().add(0, 3, 0), 4, 2, 2, 2, 0, null, true);
         b.world.spawnParticle(Particle.LARGE_SMOKE, bl.clone().add(0, 3, 0), 120, 2, 3, 2, 0.1, null, true);
-        b.world.playSound(bl, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 12.0f, 0.6f);
+        snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, 12.0f, 0.6f);
+        snd(b, Sound.ENTITY_RAVAGER_ROAR, 12.0f, 0.4f);
         plugin.log("Typhon evre " + b.phase);
     }
 
@@ -668,6 +1170,7 @@ public final class BossManager {
             }
             b.removing = true;
         }
+        b.shield = false;
         if (boss == b) {
             boss = null;
         }
@@ -681,7 +1184,8 @@ public final class BossManager {
             world.spawnParticle(Particle.LARGE_SMOKE, at.clone().add(0, 3, 0), 150, 2, 3, 2, 0.1, null, true);
             world.playSound(at, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 12.0f, 0.5f);
             if (died) {
-                world.playSound(at, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 12.0f, 0.4f);
+                world.playSound(at, Sound.ENTITY_WITHER_DEATH, SoundCategory.HOSTILE, 12.0f, 0.6f);
+                world.playSound(at, Sound.ENTITY_ENDER_DRAGON_DEATH, SoundCategory.HOSTILE, 10.0f, 0.7f);
             }
         });
 
@@ -693,6 +1197,7 @@ public final class BossManager {
                     new Vector3f(0.01f, 0.01f, 0.01f),
                     new Quaternionf());
             d.getScheduler().run(plugin, t -> {
+                d.setInterpolationDelay(0);
                 d.setInterpolationDuration(20);
                 d.setTransformation(scatter);
             }, null);
@@ -744,12 +1249,27 @@ public final class BossManager {
         // Boss'un verdiği hasara üst sınır (tek vuruşta ölüm olmasın)
         if (e instanceof EntityDamageByEntityEvent by && by.getDamager().getUniqueId().equals(b.bodyId)) {
             e.setDamage(Math.min(e.getDamage(), cfg.getDouble("boss.max-hit", 10.0)));
+            b.swingFlag = true;
+            b.poseNow = true;
+            victim.getWorld().playSound(victim.getLocation(), Sound.ENTITY_RAVAGER_ATTACK,
+                    SoundCategory.HOSTILE, 2.0f, 0.6f);
             return;
         }
 
         if (victim.getUniqueId().equals(b.bodyId)) {
             if (b.emerging || b.removing) {
                 e.setCancelled(true);
+                return;
+            }
+            // Süper sırasında kimse vuramaz
+            if (b.shield) {
+                e.setCancelled(true);
+                if (b.tick - b.lastDing >= 4) {
+                    b.lastDing = b.tick;
+                    Location at = b.lastLoc.clone().add(0, 3, 0);
+                    b.world.playSound(at, Sound.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.HOSTILE, 2.0f, 1.3f);
+                    b.world.spawnParticle(Particle.END_ROD, at, 8, 1.5, 1.5, 1.5, 0.05, null, true);
+                }
                 return;
             }
             DamageCause cause = e.getCause();
@@ -760,6 +1280,10 @@ public final class BossManager {
                 b.body.teleportAsync(b.home);
             } else if (TRAP.contains(cause)) {
                 e.setDamage(Math.min(e.getDamage(), cfg.getDouble("boss.trap-damage-cap", 2.0)));
+            } else if (b.superState == 2 && attackerOf(e) != null) {
+                // Süperden sonra yorgun: ekstra hasar alır
+                double bonus = cfg.getDouble("boss.super.exhausted-bonus-percent", 25.0);
+                e.setDamage(e.getDamage() * (1.0 + bonus / 100.0));
             }
             return;
         }
@@ -772,7 +1296,7 @@ public final class BossManager {
         }
     }
 
-    /** Hasarı kaydeder ve "son vuruş" zamanını günceller. */
+    /** Hasarı kaydeder, acı sesi ve sarsılma animasyonunu oynatır. */
     public void onDamageDone(EntityDamageEvent e) {
         Boss b = boss;
         if (b == null || !e.getEntity().getUniqueId().equals(b.bodyId)) {
@@ -782,6 +1306,13 @@ public final class BossManager {
         if (attacker != null) {
             b.damage.merge(attacker.getUniqueId(), e.getFinalDamage(), Double::sum);
             b.lastHitTick = b.tick;
+        }
+        b.flinch = 4;
+        b.poseNow = true;
+        if (b.tick - b.lastHurt >= 6) {
+            b.lastHurt = b.tick;
+            snd(b, Sound.ENTITY_WITHER_HURT, 3.0f, 0.6f);
+            snd(b, Sound.BLOCK_STONE_BREAK, 2.0f, 0.7f);
         }
     }
 

@@ -43,6 +43,7 @@ public final class MeteorBossPlugin extends JavaPlugin {
 
         // Sunucu etkinlik ortasında kapandıysa çukuru geri kur
         Bukkit.getGlobalRegionScheduler().runDelayed(this, task -> events.recoverOnStartup(), 100L);
+        Bukkit.getGlobalRegionScheduler().runAtFixedRate(this, task -> events.autoTick(), 600L, 600L);
         log("MeteorBoss açıldı.");
     }
 
