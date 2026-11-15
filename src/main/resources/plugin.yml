@@ -8,8 +8,8 @@ description: Meteor düşme ve boss etkinliği
 
 commands:
   meteor:
-    description: Meteor düşürür
-    usage: /meteor [x z [dünya]] | /meteor reload
+    description: Meteor etkinliği komutları
+    usage: /meteor [x z] | /meteor reload | /meteor etkinlik [-z|-k] | /meteor debug
     permission: meteorboss.admin
 
 permissions:

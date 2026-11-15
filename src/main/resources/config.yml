@@ -1,21 +1,36 @@
 # MeteorBoss ayarları (değiştirdikten sonra /meteor reload yaz)
 
-# Kraterin yarıçapı (blok). 2 ile 12 arası
-crater-radius: 4
+# Boşluk Çukuru'nun yarıçapı (blok). 6 ile 30 arası
+arena-radius: 15
 
 # Meteorun düşmeye başladığı yükseklik (yerden kaç blok yukarıda)
-fall-height: 90
+fall-height: 120
 
 # Düşüş süresi (tick, 20 tick = 1 saniye)
-fall-ticks: 100
+fall-ticks: 160
 
-# false yaparsan meteor blok kırmaz, sadece efekt çıkar
-break-blocks: true
+# Boss çıktıktan kaç saniye sonra çukur kapanmaya başlasın
+close-delay-seconds: 10
 
-# Meteor düşerken herkese sohbette duyuru
-announce: true
-announce-coords: true
+# Çukurun kapanma süresi (saniye). 300 = 5 dakika
+close-duration-seconds: 300
+
+# İki etkinlik arasında en az kaç dakika olsun
+cooldown-minutes: 30
+
+# /meteor yazınca baktığın yönde kaç blok ileriye düşsün
+default-distance: 10
+
+# Başlık ve geri sayım kaç blok yakındaki oyunculara görünsün (0 = dünyadaki herkes)
+title-radius: 0
+
+# Çarpma şok dalgası: etki yarıçapı, hasar (2.0 = 1 kalp), savrulma gücü
+shock-radius: 28
+shock-damage: 2.0
+shock-knockback: 1.4
 
 messages:
-  incoming: "<gold><bold>☄ Gökyüzünden bir meteor düşüyor!</bold></gold>"
-  coords: " <yellow>Konum: <white>%x% %z%"
+  title: "<gradient:#b46bff:#ff5f3d><bold>☄ METEOR ☄</bold></gradient>"
+  subtitle: "<gray>Gökyüzünden bir şey düşüyor..."
+  countdown: "<gold>☄ Çarpmaya <white>%s</white> saniye"
+  called: "<green>Meteor yola çıktı. <gray>(Boss 2. aşamada eklenecek)"
