@@ -533,7 +533,7 @@ public final class BossManager {
         byte[] hash = hex(cfg.getString("resource-pack.sha1", ""));
         Component prompt = mm.deserialize(cfg.getString("resource-pack.prompt", "<light_purple>Typhon modeli için paket"));
         UUID id = UUID.nameUUIDFromBytes("meteorboss-typhon".getBytes());
-        p.getScheduler().runDelayed(plugin, t -> p.addResourcePack(id, url, hash, prompt, false), null, 40L);
+        p.getScheduler().runDelayed(plugin, t -> p.addResourcePack(id, url, hash, net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(prompt), false), null, 40L);
     }
 
     public void onPackStatus(PlayerResourcePackStatusEvent e) {
