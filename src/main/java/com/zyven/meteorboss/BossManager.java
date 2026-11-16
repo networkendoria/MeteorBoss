@@ -686,7 +686,7 @@ public final class BossManager {
     /** Parçaları zombinin konumuna taşır. */
     private void syncParts(Boss b, Location bl) {
         // Görünüm zombinin baktığı yöne döner ama öne/arkaya eğilmez (pitch 0); model yönü ayarlanabilir
-        float offset = (float) plugin.getConfig().getDouble("boss.model-yaw-offset", 180.0);
+        float offset = b.pack ? (float) plugin.getConfig().getDouble("boss.model-yaw-offset", 180.0) : 0f;
         Location target = bl.clone();
         target.setPitch(0f);
         target.setYaw(bl.getYaw() + offset);
