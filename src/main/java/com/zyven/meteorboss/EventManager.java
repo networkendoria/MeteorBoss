@@ -476,7 +476,7 @@ public final class EventManager {
             return;
         }
         s.state = Session.State.ACTIVE;
-        plugin.log("Boşluk Çukuru hazır.");
+        plugin.log("Cehennem Çukuru hazır.");
         for (Consumer<Session> hook : emergeHooks) {
             try {
                 hook.accept(s);

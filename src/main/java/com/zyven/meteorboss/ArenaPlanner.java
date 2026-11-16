@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Boşluk Çukuru'nun hangi blokları nasıl değiştireceğini hesaplar (dünyaya dokunmaz). */
+/** Cehennem Çukuru'nun hangi blokları nasıl değiştireceğini hesaplar (dünyaya dokunmaz). */
 final class ArenaPlanner {
 
     record Change(int x, int y, int z, Material material, boolean onlyIfSolid) {}
@@ -49,8 +49,8 @@ final class ArenaPlanner {
                     double fade = 1.0 - (dist - radius) / 3.0;
                     if (rand(seed, x, groundY, z) < 0.75 * fade + 0.15) {
                         double pick = rand(seed + 1, x, groundY, z);
-                        Material m = pick < 0.5 ? Material.COARSE_DIRT
-                                : pick < 0.85 ? Material.BLACKSTONE : Material.END_STONE;
+                        Material m = pick < 0.5 ? Material.NETHERRACK
+                                : pick < 0.85 ? Material.BLACKSTONE : Material.RED_NETHER_BRICKS;
                         put(byPos, new Change(x, groundY, z, m, true));
                     }
                 }
@@ -61,7 +61,7 @@ final class ArenaPlanner {
         int altarY = floorY(0, radius, depthMax, groundY, minY);
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                Material m = (dx == 0 && dz == 0) ? Material.CRYING_OBSIDIAN : Material.OBSIDIAN;
+                Material m = (dx == 0 && dz == 0) ? Material.SHROOMLIGHT : Material.POLISHED_BLACKSTONE_BRICKS;
                 put(byPos, new Change(centerX + dx, altarY, centerZ + dz, m, false));
             }
         }
@@ -74,9 +74,10 @@ final class ArenaPlanner {
             double dist = Math.sqrt((px - centerX) * (px - centerX) + (pz - centerZ) * (pz - centerZ));
             int base = floorY(dist, radius, depthMax, groundY, minY);
             for (int y = base; y <= base + 5; y++) {
-                put(byPos, new Change(px, y, pz, Material.OBSIDIAN, false));
+                Material m = (y - base) % 3 == 2 ? Material.CHISELED_POLISHED_BLACKSTONE : Material.POLISHED_BLACKSTONE_BRICKS;
+                put(byPos, new Change(px, y, pz, m, false));
             }
-            put(byPos, new Change(px, base + 6, pz, Material.END_ROD, false));
+            put(byPos, new Change(px, base + 6, pz, Material.SHROOMLIGHT, false));
         }
 
         Map<Long, List<Change>> grouped = new HashMap<>();
@@ -95,15 +96,18 @@ final class ArenaPlanner {
 
     private static Material floorMaterial(double r, double rnd) {
         if (r < 0.2) {
-            return rnd < 0.5 ? Material.CRYING_OBSIDIAN : Material.OBSIDIAN;
+            return rnd < 0.4 ? Material.POLISHED_BLACKSTONE_BRICKS
+                    : rnd < 0.7 ? Material.CRACKED_POLISHED_BLACKSTONE_BRICKS
+                    : rnd < 0.85 ? Material.SHROOMLIGHT : Material.GILDED_BLACKSTONE;
         }
         if (r < 0.5) {
-            return rnd < 0.6 ? Material.OBSIDIAN : rnd < 0.8 ? Material.END_STONE_BRICKS : Material.CRYING_OBSIDIAN;
+            return rnd < 0.5 ? Material.BLACKSTONE : rnd < 0.75 ? Material.POLISHED_BLACKSTONE_BRICKS
+                    : rnd < 0.9 ? Material.RED_NETHER_BRICKS : Material.SHROOMLIGHT;
         }
         if (r < 0.8) {
-            return rnd < 0.55 ? Material.END_STONE : rnd < 0.85 ? Material.END_STONE_BRICKS : Material.PURPUR_BLOCK;
+            return rnd < 0.5 ? Material.NETHERRACK : rnd < 0.8 ? Material.BLACKSTONE : Material.RED_NETHER_BRICKS;
         }
-        return rnd < 0.5 ? Material.END_STONE : rnd < 0.8 ? Material.BLACKSTONE : Material.MAGMA_BLOCK;
+        return rnd < 0.55 ? Material.NETHERRACK : rnd < 0.85 ? Material.BLACKSTONE : Material.NETHER_WART_BLOCK;
     }
 
     private static void put(Map<Long, Change> map, Change c) {

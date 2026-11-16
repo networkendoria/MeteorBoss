@@ -51,12 +51,12 @@ resource-pack:
   prompt: "<light_purple>Typhon modeli için paket"
 
 messages:
-  super-warning: "<dark_purple>⚠ <light_purple><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"
-  title: "<gradient:#b46bff:#ff5f3d><bold>☄ METEOR ☄</bold></gradient>"
+  super-warning: "<dark_red>⚠ <gold><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"
+  title: "<gradient:#ffb12b:#ff2a2a><bold>☄ METEOR ☄</bold></gradient>"
   subtitle: "<gray>Gökyüzünden bir şey düşüyor..."
   countdown: "<gold>☄ Çarpmaya <white>%s</white> saniye"
   called: "<green>Boss başarıyla çağırıldı"
-  bossbar: "<gradient:#b46bff:#ff3d6e><bold>✦ ᴛʏᴘʜᴏɴ ✦</bold></gradient> <gray>│ <white>ᴇᴠʀᴇ %phase%"
+  bossbar: "<gradient:#ffb12b:#ff2a2a><bold>✦ ᴛʏᴘʜᴏɴ ✦</bold></gradient> <gray>│ <white>ᴇᴠʀᴇ %phase%"
 
 boss:
   # Can: temel can + oyuncu başına ek can (en fazla 1024)
@@ -83,7 +83,7 @@ boss:
   strike-damage: 5
   # Saldırılar arası bekleme (saniye)
   attack-cooldown-seconds: 8
-  # Görünüm modu: "blocks" = vanilla bloklardan (paket gerekmez), "pack" = özel model (resource pack gerekir)
+  # Görünüm modu: "blocks" = vanilla bloklardan (paket gerekmez, bu sunucu için doğrusu bu), "pack" = eski resource pack modu (KULLANMA, güncel değil)
   model-mode: blocks
   # Sadece pack modunda: model hangi yöne baksın. Boss arkası dönük görünüyorsa 0 yap, 180 normal
   model-yaw-offset: 180

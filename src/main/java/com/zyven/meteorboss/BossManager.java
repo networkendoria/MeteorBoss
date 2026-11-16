@@ -63,6 +63,9 @@ public final class BossManager {
     private static final Vector3f PIVOT_LEG_L = new Vector3f(-0.6f, 2.2f, 0f);
     private static final Vector3f PIVOT_LEG_R = new Vector3f(0.6f, 2.2f, 0f);
     private static final Vector3f PIVOT_HEAD = new Vector3f(0f, 4.6f, 0f);
+    private static final Vector3f PIVOT_WING_L = new Vector3f(-0.7f, 4.6f, -0.9f);
+    private static final Vector3f PIVOT_WING_R = new Vector3f(0.7f, 4.6f, -0.9f);
+    private static final Vector3f PIVOT_TAIL = new Vector3f(0f, 1.5f, -0.6f);
 
     private static final Set<DamageCause> IMMUNE = EnumSet.of(
             DamageCause.SUFFOCATION, DamageCause.DROWNING, DamageCause.FALL, DamageCause.CRAMMING,
@@ -148,6 +151,7 @@ public final class BossManager {
         boolean swingRight;
         double raiseL, raiseR, headE, jawE;
         double aArmL, aArmR, aLegL, aLegR, aHead, aJaw, breath, bobL, bobR;
+        double wingE, aWing, aTail;
         final long[] sig = new long[GROUPS];
         double orbit;
         int nextAmbient = 200;
@@ -247,7 +251,7 @@ public final class BossManager {
                 nb.displays.add(d);
             }
 
-            nb.bar = BossBar.bossBar(barTitle(nb), 1.0f, BossBar.Color.PURPLE, BossBar.Overlay.NOTCHED_10);
+            nb.bar = BossBar.bossBar(barTitle(nb), 1.0f, BossBar.Color.YELLOW, BossBar.Overlay.NOTCHED_10);
             boss = nb;
             plugin.log("Typhon çıkıyor (can: " + (int) nb.maxHealth + ", parça: " + nb.displays.size() + ").");
 
@@ -311,6 +315,9 @@ public final class BossManager {
             case G_LEG_L -> PIVOT_LEG_L;
             case G_LEG_R -> PIVOT_LEG_R;
             case G_HEAD, G_JAW -> PIVOT_HEAD;
+            case G_WING_L -> PIVOT_WING_L;
+            case G_WING_R -> PIVOT_WING_R;
+            case G_TAIL -> PIVOT_TAIL;
             default -> null;
         };
     }
@@ -323,8 +330,23 @@ public final class BossManager {
             case G_LEG_R -> b.aLegR;
             case G_HEAD -> b.aHead;
             case G_JAW -> b.aHead + b.aJaw;
+            case G_WING_L -> -b.aWing;
+            case G_WING_R -> b.aWing;
+            case G_TAIL -> b.aTail;
             default -> 0.0;
         };
+    }
+
+    /** Gruba göre dönüş ekseni: kanatlar Z (çırpma), kuyruk Y (sallanma), diğerleri X. */
+    private static Quaternionf rot(int group, double angle) {
+        Quaternionf q = new Quaternionf();
+        if (group == G_WING_L || group == G_WING_R) {
+            return q.rotateZ((float) angle);
+        }
+        if (group == G_TAIL) {
+            return q.rotateY((float) angle);
+        }
+        return q.rotateX((float) angle);
     }
 
     /** Bir parçanın o anki duruşa göre dönüşümü. k: büyüme (çıkış sahnesinde 0..1). */
@@ -353,7 +375,7 @@ public final class BossManager {
         Vector3f pivot = pivotOf(p.group());
         double angle = angleOf(b, p.group());
         if (pivot != null && Math.abs(angle) > 1e-4) {
-            Quaternionf qp = new Quaternionf().rotateX((float) angle);
+            Quaternionf qp = rot(p.group(), angle);
             t.sub(pivot);
             qp.transform(t);
             t.add(pivot);
@@ -416,6 +438,21 @@ public final class BossManager {
             b.swingRight = !b.swingRight;
         }
 
+        // Kanatlar: normalde hafif çırpar, kükrerken ve süperde açılır, yorgunken düşer
+        double wingTgt = 0.08 + 0.08 * Math.sin(t * 0.07);
+        if (b.superState == 1) {
+            wingTgt = 0.75;
+        } else if (b.superState == 2) {
+            wingTgt = -0.25;
+        } else if (b.roarTicks > 0) {
+            wingTgt = 0.6;
+        } else if (a != null) {
+            wingTgt = 0.4;
+        }
+        b.wingE += (wingTgt - b.wingE) * 0.35;
+        b.aWing = b.wingE;
+        b.aTail = Math.sin(t * 0.1) * (b.moving ? 0.35 : 0.2);
+
         b.raiseL += (tgtL - b.raiseL) * 0.45;
         b.raiseR += (tgtR - b.raiseR) * 0.45;
         b.headE += (tgtHead - b.headE) * 0.5;
@@ -442,6 +479,9 @@ public final class BossManager {
         sig[G_CHEST] = Math.round(b.breath * 1000);
         sig[G_CRY_L] = Math.round(b.bobL * 50);
         sig[G_CRY_R] = Math.round(b.bobR * 50);
+        sig[G_WING_L] = Math.round(b.aWing * 25);
+        sig[G_WING_R] = sig[G_WING_L];
+        sig[G_TAIL] = Math.round(b.aTail * 25);
 
         boolean[] changed = new boolean[GROUPS];
         for (int g = 0; g < GROUPS; g++) {
@@ -514,7 +554,7 @@ public final class BossManager {
         Vector3f pivot = pivotOf(group);
         double angle = angleOf(b, group);
         if (pivot != null && Math.abs(angle) > 1e-4) {
-            Quaternionf qp = new Quaternionf().rotateX((float) angle);
+            Quaternionf qp = rot(group, angle);
             t.sub(pivot);
             qp.transform(t);
             t.add(pivot);
@@ -763,12 +803,21 @@ public final class BossManager {
             snd(b, Sound.ENTITY_RAVAGER_STEP, 2.0f, 0.5f);
             b.world.spawnParticle(Particle.LARGE_SMOKE, bl.clone().add(0, 0.2, 0), 6, 0.8, 0.1, 0.8, 0.01, null, true);
         }
+        // Ağızdan duman ve ateş, omuzlardan lav damlası
+        if (t % 3 == 0) {
+            double yawRad = Math.toRadians(bl.getYaw());
+            Location mouth = bl.clone().add(-Math.sin(yawRad) * 1.0, 4.9, Math.cos(yawRad) * 1.0);
+            b.world.spawnParticle(Particle.LARGE_SMOKE, mouth, 2, 0.2, 0.1, 0.2, 0.02, null, true);
+            b.world.spawnParticle(Particle.FLAME, mouth, 2, 0.2, 0.05, 0.2, 0.02, null, true);
+        }
+        if (t % 10 == 0) {
+            b.world.spawnParticle(Particle.DRIPPING_LAVA, bl.clone().add(0, 5.0, 0), 6, 2.0, 0.5, 1.0, 0, null, true);
+        }
         if (t % 4 == 0) {
             if (b.phase >= 2) {
                 b.world.spawnParticle(Particle.FLAME, bl.clone().add(0, 0.2, 0), 3, 0.9, 0.1, 0.9, 0.01, null, true);
             } else {
-                Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(150, 90, 200), 1.6f);
-                b.world.spawnParticle(Particle.DUST, bl.clone().add(0, 0.2, 0), 4, 0.9, 0.1, 0.9, 0, dust, true);
+                b.world.spawnParticle(Particle.SMALL_FLAME, bl.clone().add(0, 0.2, 0), 4, 0.9, 0.1, 0.9, 0.01, null, true);
             }
         }
     }
@@ -788,7 +837,7 @@ public final class BossManager {
         }
         if (dist > limit - 8) {
             double ang = Math.atan2(bl.getZ() - b.home.getZ(), bl.getX() - b.home.getX());
-            Particle.DustOptions purple = new Particle.DustOptions(Color.fromRGB(170, 60, 255), 2.0f);
+            Particle.DustOptions purple = new Particle.DustOptions(Color.fromRGB(255, 110, 20), 2.0f);
             for (int i = -6; i <= 6; i++) {
                 double a = ang + i * 0.04;
                 Location l = new Location(b.world, b.home.getX() + Math.cos(a) * limit, bl.getY() + 0.3,
@@ -951,7 +1000,7 @@ public final class BossManager {
     }
 
     private void shieldBubble(Boss b, Location bl) {
-        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(170, 80, 255), 1.5f);
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(255, 110, 30), 1.5f);
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         for (int i = 0; i < 36; i++) {
             double u = rnd.nextDouble() * 2 - 1;
@@ -1051,7 +1100,7 @@ public final class BossManager {
 
     private void drawRing(World w, Location c, double r, double progress) {
         Particle.DustOptions dust = new Particle.DustOptions(
-                Color.fromRGB((int) (120 + 135 * progress), 30, (int) (255 - 200 * progress)), 2.0f);
+                Color.fromRGB(255, (int) (190 - 170 * progress), 10), 2.0f);
         int pts = Math.max(24, (int) (r * 8));
         for (int i = 0; i < pts; i++) {
             double a = i * Math.PI * 2 / pts;
@@ -1117,7 +1166,7 @@ public final class BossManager {
         if (b.phase == 3 && b.superCount == 0 && cfg.getBoolean("boss.super.force-on-phase3", true)) {
             b.superTimer = Math.min(b.superTimer, 100);
         }
-        b.bar.color(b.phase >= 3 ? BossBar.Color.RED : BossBar.Color.PINK);
+        b.bar.color(b.phase >= 3 ? BossBar.Color.PURPLE : BossBar.Color.RED);
         b.bar.name(barTitle(b));
         b.world.spawnParticle(Particle.EXPLOSION_EMITTER, bl.clone().add(0, 3, 0), 4, 2, 2, 2, 0, null, true);
         b.world.spawnParticle(Particle.LARGE_SMOKE, bl.clone().add(0, 3, 0), 120, 2, 3, 2, 0.1, null, true);
