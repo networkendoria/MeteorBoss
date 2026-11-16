@@ -111,6 +111,8 @@ public final class BossManager {
 
         volatile boolean emerging = true;
         volatile boolean removing = false;
+        volatile int lastViewerTick = 0;
+        final Map<Sound, Integer> lastSnd = new ConcurrentHashMap<>();
         volatile boolean healing = false;
         volatile boolean shield = false;
         volatile int phase = 1;
@@ -272,7 +274,7 @@ public final class BossManager {
         setBase(z, Attribute.MOVEMENT_SPEED, b.baseSpeed);
         setBase(z, Attribute.FOLLOW_RANGE, 60.0);
         setBase(z, Attribute.KNOCKBACK_RESISTANCE, 0.8);
-        setBase(z, Attribute.SCALE, 3.0);
+        setBase(z, Attribute.SCALE, cfg.getDouble("boss.hitbox-scale", 3.2));
         z.setBaby(false);
         z.setCanBreakDoors(false);
         z.setShouldBurnInDay(false);
@@ -302,8 +304,29 @@ public final class BossManager {
                 .replace("%phase%", String.valueOf(b.phase)));
     }
 
+    /** Aynı ses 4 tick içinde tekrar çalmaz (üst üste binip gürültü olmasın). */
     private void snd(Boss b, Sound sound, float volume, float pitch) {
+        Integer last = b.lastSnd.get(sound);
+        if (last != null && b.tick - last < 4) {
+            return;
+        }
+        b.lastSnd.put(sound, b.tick);
         b.world.playSound(b.lastLoc, sound, SoundCategory.HOSTILE, volume, pitch);
+    }
+
+    /** Katmanlı kükreme: derin gövde sesi + ejderha hırıltısı + yırtıcı tını. */
+    private void roar(Boss b, float volume) {
+        snd(b, Sound.ENTITY_RAVAGER_ROAR, volume, 0.45f);
+        snd(b, Sound.ENTITY_WARDEN_ROAR, volume * 0.7f, 0.6f);
+        snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, volume * 0.6f, 0.5f);
+    }
+
+    /** Oyuncu sayısına göre saldırı hasarı çarpanı (üst sınırlı). */
+    private double damageScale(Boss b, FileConfiguration cfg, Location at) {
+        int near = Math.max(1, playersNear(b.world, at, 45).size());
+        double per = cfg.getDouble("boss.damage-per-player-percent", 6.0) / 100.0;
+        double cap = cfg.getDouble("boss.damage-scale-cap", 1.5);
+        return Math.min(cap, 1.0 + per * (near - 1));
     }
 
     // ------------------------------------------------------------------ model ve poz
@@ -625,7 +648,9 @@ public final class BossManager {
             b.lastLoc = bl;
             FileConfiguration cfg = plugin.getConfig();
 
-            if (b.emerging || t % 3 == 0) {
+            // Kimse yakında değilse model güncellemeleri seyrekleşir (TPS ve paket tasarrufu)
+            boolean watched = b.emerging || t - b.lastViewerTick < 100;
+            if (b.emerging || (watched ? t % 3 == 0 : t % 20 == 0)) {
                 syncParts(b, bl);
             }
 
@@ -648,15 +673,19 @@ public final class BossManager {
                 refreshBar(b);
             }
 
-            if (t % 3 == 0 || b.poseNow) {
+            if ((watched && t % 3 == 0) || b.poseNow) {
                 b.poseNow = false;
                 updatePose(b, t, b.forcePose, 1.0);
                 b.forcePose = false;
             }
 
-            orbitCrystals(b, bl, t);
+            if (watched || t % 10 == 0) {
+                orbitCrystals(b, bl, t);
+            }
             healTick(b, cfg, t, health);
-            ambientTick(b, bl, t);
+            if (watched) {
+                ambientTick(b, bl, t);
+            }
 
             boolean busy = superTick(b, cfg, bl, t);
             if (!busy) {
@@ -707,7 +736,7 @@ public final class BossManager {
             refreshBar(b);
             b.world.spawnParticle(Particle.EXPLOSION_EMITTER, b.home, 6, 2, 1, 2, 0, null, true);
             snd(b, Sound.ENTITY_GENERIC_EXPLODE, 12.0f, 0.5f);
-            snd(b, Sound.ENTITY_RAVAGER_ROAR, 12.0f, 0.4f);
+            roar(b, 12.0f);
             plugin.log("Typhon hazır.");
         }
     }
@@ -793,9 +822,10 @@ public final class BossManager {
         if (t >= b.nextAmbient) {
             b.nextAmbient = t + 120 + rnd.nextInt(100);
             if (b.phase >= 3 && rnd.nextBoolean()) {
-                snd(b, Sound.ENTITY_RAVAGER_ROAR, 5.0f, 0.5f);
+                roar(b, 5.0f);
             } else {
-                snd(b, Sound.ENTITY_WITHER_AMBIENT, 4.0f, b.phase >= 2 ? 0.45f : 0.55f);
+                Sound[] idle = {Sound.ENTITY_WARDEN_AMBIENT, Sound.ENTITY_RAVAGER_AMBIENT, Sound.ENTITY_WITHER_AMBIENT};
+                snd(b, idle[rnd.nextInt(idle.length)], 4.0f, b.phase >= 2 ? 0.45f : 0.55f);
             }
         }
         if (b.moving && t % 12 == 0) {
@@ -921,7 +951,7 @@ public final class BossManager {
         b.body.setTarget(null);
         b.body.setAI(false);
         b.poseNow = true;
-        snd(b, Sound.ENTITY_RAVAGER_ROAR, 14.0f, 0.4f);
+        roar(b, 14.0f);
         warnPlayers(b, cfg);
         plugin.log("Typhon süper saldırıya hazırlanıyor.");
     }
@@ -950,7 +980,7 @@ public final class BossManager {
     private void blast(Boss b, FileConfiguration cfg, Location bl) {
         double radius = blastRadius(b, cfg);
         double maxHit = cfg.getDouble("boss.max-hit", 10.0);
-        double damage = Math.min(cfg.getDouble("boss.super.damage", 6.0), maxHit);
+        double damage = Math.min(cfg.getDouble("boss.super.damage", 6.0) * damageScale(b, cfg, bl), maxHit);
         double power = cfg.getDouble("boss.super.knockback", 2.2);
         World world = b.world;
         Location c = bl.clone();
@@ -964,7 +994,7 @@ public final class BossManager {
         }
         snd(b, Sound.ENTITY_GENERIC_EXPLODE, 16.0f, 0.5f);
         snd(b, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 16.0f, 0.5f);
-        snd(b, Sound.ENTITY_RAVAGER_ROAR, 14.0f, 0.3f);
+        roar(b, 14.0f);
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             p.getScheduler().run(plugin, tt -> {
@@ -1065,7 +1095,7 @@ public final class BossManager {
         double radius = b.phase >= 3 ? 9.0 : 7.0;
         b.attack = new Attack(1, b.phase >= 3 ? 24 : 30, List.of(bl.clone()), radius, slamDamage);
         b.poseNow = true;
-        snd(b, Sound.ENTITY_RAVAGER_ROAR, 9.0f, 0.5f);
+        roar(b, 9.0f);
     }
 
     private void runAttack(Boss b, FileConfiguration cfg) {
@@ -1087,7 +1117,8 @@ public final class BossManager {
             b.world.spawnParticle(Particle.FLAME, c, 60, a.radius / 2, 0.3, a.radius / 2, 0.1, null, true);
             b.world.spawnParticle(Particle.END_ROD, c.clone().add(0, 1, 0), 40, a.radius / 2, 1.0, a.radius / 2, 0.1, null, true);
             b.world.playSound(c, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 6.0f, 0.7f);
-            hurt(b.world, c, a.radius, Math.min(a.damage, maxHit));
+            hurt(b.world, c, a.radius, Math.min(a.damage * damageScale(b, cfg, c), maxHit));
+            b.world.playSound(c, Sound.ITEM_FIRECHARGE_USE, SoundCategory.HOSTILE, 4.0f, 0.6f);
         }
         b.attack = null;
         b.raiseL = 0.0; // kollar hızla iner
@@ -1171,7 +1202,7 @@ public final class BossManager {
         b.world.spawnParticle(Particle.EXPLOSION_EMITTER, bl.clone().add(0, 3, 0), 4, 2, 2, 2, 0, null, true);
         b.world.spawnParticle(Particle.LARGE_SMOKE, bl.clone().add(0, 3, 0), 120, 2, 3, 2, 0.1, null, true);
         snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, 12.0f, 0.6f);
-        snd(b, Sound.ENTITY_RAVAGER_ROAR, 12.0f, 0.4f);
+        roar(b, 12.0f);
         plugin.log("Typhon evre " + b.phase);
     }
 
@@ -1180,6 +1211,7 @@ public final class BossManager {
         for (Player p : Bukkit.getOnlinePlayers()) {
             p.getScheduler().run(plugin, t -> {
                 if (p.getWorld().equals(b.world) && p.getLocation().distanceSquared(b.lastLoc) <= r * r) {
+                    b.lastViewerTick = b.tick;
                     p.showBossBar(b.bar);
                 } else {
                     p.hideBossBar(b.bar);
@@ -1404,7 +1436,7 @@ public final class BossManager {
         b.poseNow = true;
         if (b.tick - b.lastHurt >= 6) {
             b.lastHurt = b.tick;
-            snd(b, Sound.ENTITY_WITHER_HURT, 3.0f, 0.6f);
+            snd(b, Sound.ENTITY_RAVAGER_HURT, 3.0f, 0.55f);
             snd(b, Sound.BLOCK_STONE_BREAK, 2.0f, 0.7f);
         }
     }

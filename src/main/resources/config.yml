@@ -110,6 +110,11 @@ boss:
     force-on-phase3: true
     # Uyarı yazısı kaç blok yakındakilere görünsün
     warning-radius: 70
+  # Hitbox ölçeği (zombi gövdesi). 3.2 yaklaşık kafa boyuna denk gelir, kanat/kuyruk vurulmaz
+  hitbox-scale: 3.2
+  # Yakındaki (45 blok) her ek oyuncu için saldırı hasarı yüzde kaç artsın, en fazla kaç kat
+  damage-per-player-percent: 6
+  damage-scale-cap: 1.5
   # Boss barı kaç blok yakındaki oyunculara görünsün
   bar-radius: 150
   # Boss ölünce yere düşen ödüller (EŞYA:ADET)
