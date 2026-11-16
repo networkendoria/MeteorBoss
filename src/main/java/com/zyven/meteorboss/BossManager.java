@@ -420,8 +420,9 @@ public final class BossManager {
         b.raiseR += (tgtR - b.raiseR) * 0.45;
         b.headE += (tgtHead - b.headE) * 0.5;
         b.jawE += (tgtJaw - b.jawE) * 0.5;
-        b.aArmL = -b.raiseL + swing;
-        b.aArmR = -b.raiseR - swing;
+        double idle = Math.sin(t * 0.07) * 0.05;
+        b.aArmL = -b.raiseL + swing + idle;
+        b.aArmR = -b.raiseR - swing - idle;
         b.aLegL = -swing * 0.8;
         b.aLegR = swing * 0.8;
         b.aHead = b.headE;
@@ -584,7 +585,7 @@ public final class BossManager {
             b.lastLoc = bl;
             FileConfiguration cfg = plugin.getConfig();
 
-            if (b.emerging || t % 2 == 0) {
+            if (b.emerging || t % 3 == 0) {
                 syncParts(b, bl);
             }
 
@@ -684,15 +685,20 @@ public final class BossManager {
 
     /** Parçaları zombinin konumuna taşır. */
     private void syncParts(Boss b, Location bl) {
+        // Görünüm zombinin baktığı yöne döner ama öne/arkaya eğilmez (pitch 0); model yönü ayarlanabilir
+        float offset = (float) plugin.getConfig().getDouble("boss.model-yaw-offset", 180.0);
+        Location target = bl.clone();
+        target.setPitch(0f);
+        target.setYaw(bl.getYaw() + offset);
         Location last = b.lastSync;
-        if (last != null && last.getWorld() == bl.getWorld()
-                && last.distanceSquared(bl) < 0.0004 && Math.abs(last.getYaw() - bl.getYaw()) < 1.0f) {
+        if (last != null && last.getWorld() == target.getWorld()
+                && last.distanceSquared(target) < 0.0004 && Math.abs(last.getYaw() - target.getYaw()) < 1.0f) {
             return;
         }
-        b.lastSync = bl.clone();
+        b.lastSync = target.clone();
         for (Display d : b.displays) {
             if (d.isValid()) {
-                d.teleportAsync(bl);
+                d.teleportAsync(target);
             }
         }
     }
@@ -927,7 +933,6 @@ public final class BossManager {
                 }
                 double factor = Math.max(0.0, 1.0 - dist / radius);
                 p.damage(damage);
-                p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 120, 0));
                 p.setVelocity(away.normalize().multiply(power * (0.6 + factor)).setY(0.9 + 0.5 * factor));
             }, null);
         }

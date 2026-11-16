@@ -85,6 +85,8 @@ boss:
   attack-cooldown-seconds: 8
   # Görünüm modu: "blocks" = vanilla bloklardan (paket gerekmez), "pack" = özel model (resource pack gerekir)
   model-mode: blocks
+  # Model hangi yöne baksın: boss arkası dönük görünüyorsa 0 yap, 180 normal
+  model-yaw-offset: 180
   # Görünüm kalitesi (sadece blocks modunda): high (~60 parça), medium (~45), low (~30). Sunucu kasarsa düşür
   model-quality: high
   # Süper saldırı "Boşluk Patlaması": hazırlanırken boss'a kimse vuramaz, sonra herkesi savurur
