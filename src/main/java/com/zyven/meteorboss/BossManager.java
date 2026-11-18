@@ -4,6 +4,7 @@ import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.HeightMap;
@@ -22,6 +23,7 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.EnderCrystal;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Zombie;
@@ -112,6 +114,11 @@ public final class BossManager {
         volatile boolean emerging = true;
         volatile boolean removing = false;
         volatile int lastViewerTick = 0;
+        int spawnShield = 0;
+        int nextRetarget = 100;
+        int tailCd = 120;
+        int tailLeft = 0;
+        volatile double tailSwing = 0.0;
         final Map<Sound, Integer> lastSnd = new ConcurrentHashMap<>();
         volatile boolean healing = false;
         volatile boolean shield = false;
@@ -474,7 +481,7 @@ public final class BossManager {
         }
         b.wingE += (wingTgt - b.wingE) * 0.35;
         b.aWing = b.wingE;
-        b.aTail = Math.sin(t * 0.1) * (b.moving ? 0.35 : 0.2);
+        b.aTail = Math.sin(t * 0.1) * (b.moving ? 0.35 : 0.2) + b.tailSwing;
 
         b.raiseL += (tgtL - b.raiseL) * 0.45;
         b.raiseR += (tgtR - b.raiseR) * 0.45;
@@ -659,6 +666,20 @@ public final class BossManager {
                 return;
             }
 
+            if (b.spawnShield > 0) {
+                b.spawnShield--;
+                b.shield = true;
+                if (t % 2 == 0) {
+                    shieldBubble(b, bl);
+                }
+                if (b.spawnShield == 70 || b.spawnShield == 40 || b.spawnShield == 10) {
+                    roar(b, 14.0f);
+                }
+                if (b.spawnShield == 0 && b.superState != 1) {
+                    b.shield = false;
+                }
+            }
+
             double health = body.getHealth();
             double frac = health / b.maxHealth;
             int ph = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3;
@@ -695,6 +716,8 @@ public final class BossManager {
                 if (t % 20 == 0) {
                     stuckTick(b, bl);
                 }
+                retarget(b, bl, t);
+                tailTick(b, cfg, bl);
                 attackTick(b, cfg, bl);
             }
         } catch (Throwable e) {
@@ -730,6 +753,9 @@ public final class BossManager {
             b.superTimer = Math.max(20, cfg.getInt("boss.super.first-seconds", 300) * 20);
             b.roarTicks = 30;
             b.poseNow = true;
+            b.spawnShield = 100; // doğunca 5 saniye vurulmaz
+            b.shield = true;
+            intro(b, cfg);
             b.body.setAI(true);
             b.body.setInvulnerable(false);
             spawnCrystals(b);
@@ -781,9 +807,9 @@ public final class BossManager {
             }
             double a = b.orbit + i * Math.PI / 2;
             Location at = new Location(b.world,
-                    bl.getX() + Math.cos(a) * 3.6,
+                    bl.getX() + Math.cos(a) * 6.5,
                     bl.getY() + 5.0 + Math.sin(t * 0.1 + i) * 0.4,
-                    bl.getZ() + Math.sin(a) * 3.6);
+                    bl.getZ() + Math.sin(a) * 6.5);
             c.teleportAsync(at);
             if (t % 5 == 0) {
                 boolean beam = b.healing || b.superState == 1;
@@ -1286,6 +1312,7 @@ public final class BossManager {
         e.setDroppedExp(cfg.getInt("boss.exp", 300));
         plugin.log("Typhon öldü.");
         finishBoss(b, true);
+        plugin.getEvents().bossDied();
     }
 
     private void finishBoss(Boss b, boolean died) {
@@ -1334,6 +1361,147 @@ public final class BossManager {
         if (!died && b.body != null) {
             Zombie z = b.body;
             z.getScheduler().run(plugin, t -> z.remove(), null);
+        }
+    }
+
+
+    // ------------------------------------------------------------------ giriş, hedef değiştirme, kuyruk
+
+    /** Doğuş sahnesi: kalın, tanrısal ses katmanları ve ekranda "TYPHON IS HERE". */
+    private void intro(Boss b, FileConfiguration cfg) {
+        Location at = b.lastLoc;
+        b.world.playSound(at, Sound.ENTITY_WARDEN_ROAR, SoundCategory.HOSTILE, 16.0f, 0.5f);
+        b.world.playSound(at, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 16.0f, 0.5f);
+        b.world.playSound(at, Sound.ENTITY_WITHER_SPAWN, SoundCategory.HOSTILE, 16.0f, 0.5f);
+        b.world.playSound(at, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.HOSTILE, 16.0f, 0.5f);
+        b.world.playSound(at, Sound.ENTITY_RAVAGER_ROAR, SoundCategory.HOSTILE, 16.0f, 0.3f);
+        Component title = mm.deserialize(cfg.getString("messages.intro-title",
+                "<gradient:#ffb12b:#ff2a2a><bold>TYPHON IS HERE</bold></gradient>"));
+        Component sub = mm.deserialize(cfg.getString("messages.intro-subtitle", "<gray>Canavarların babası uyandı"));
+        Title t = Title.title(title, sub, Title.Times.times(
+                java.time.Duration.ofMillis(300), java.time.Duration.ofMillis(3200), java.time.Duration.ofMillis(800)));
+        double r = cfg.getDouble("boss.bar-radius", 150.0);
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.getScheduler().run(plugin, x -> {
+                if (p.getWorld().equals(b.world) && p.getLocation().distanceSquared(at) <= r * r) {
+                    p.showTitle(t);
+                }
+            }, null);
+        }
+    }
+
+    /** Zombi tek oyuncuya kilitlenmesin: belirli aralıkla hedefi başka oyuncuya çevirir. */
+    private void retarget(Boss b, Location bl, int t) {
+        if (t < b.nextRetarget) {
+            return;
+        }
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        b.nextRetarget = t + 80 + rnd.nextInt(80);
+        if (b.returning) {
+            return;
+        }
+        List<Player> near = playersNear(b.world, bl, 45);
+        if (near.size() < 2) {
+            return;
+        }
+        LivingEntity cur = b.body.getTarget();
+        List<Player> pool = new ArrayList<>();
+        for (Player p : near) {
+            if (p.isValid() && (cur == null || !p.getUniqueId().equals(cur.getUniqueId()))) {
+                pool.add(p);
+            }
+        }
+        if (!pool.isEmpty()) {
+            b.body.setTarget(pool.get(rnd.nextInt(pool.size())));
+        }
+    }
+
+    /** Arkasına geçen oyuncuya kuyruk darbesi (hazırlık: kuyruk kıvrılır, sonra savurur). */
+    private void tailTick(Boss b, FileConfiguration cfg, Location bl) {
+        double yaw = Math.toRadians(bl.getYaw());
+        if (b.tailLeft > 0) {
+            b.tailLeft--;
+            double prog = 1.0 - b.tailLeft / 16.0;
+            b.tailSwing = prog < 0.6 ? 0.9 * (prog / 0.6) : 0.9 - 1.8 * ((prog - 0.6) / 0.4);
+            b.poseNow = true;
+            if (b.tailLeft % 2 == 0) {
+                drawTailArc(b, bl, yaw, 0.3 + 0.7 * prog);
+            }
+            if (b.tailLeft == 0) {
+                tailStrike(b, cfg, bl, yaw);
+                b.tailSwing = 0.0;
+                b.tailCd = Math.max(20, cfg.getInt("boss.tail-cooldown-seconds", 5) * 20);
+            }
+            return;
+        }
+        if (--b.tailCd > 0 || b.attack != null || b.superState != 0) {
+            return;
+        }
+        double fx = -Math.sin(yaw);
+        double fz = Math.cos(yaw);
+        for (Player p : playersNear(b.world, bl, 9)) {
+            Location pl = p.getLocation();
+            double dx = pl.getX() - bl.getX();
+            double dz = pl.getZ() - bl.getZ();
+            double len = Math.hypot(dx, dz);
+            if (len < 0.1) {
+                continue;
+            }
+            if ((dx * fx + dz * fz) / len < -0.2) { // arkasında
+                b.tailLeft = 16;
+                snd(b, Sound.ENTITY_RAVAGER_ROAR, 6.0f, 0.8f);
+                return;
+            }
+        }
+        b.tailCd = 10;
+    }
+
+    private void drawTailArc(Boss b, Location bl, double yaw, double strength) {
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(255, (int) (160 - 120 * strength), 10), 1.8f);
+        for (int i = -6; i <= 6; i++) {
+            double a = yaw + Math.PI + i * 0.25;
+            for (double d = 3.0; d <= 9.0; d += 2.0) {
+                Location l = new Location(b.world, bl.getX() - Math.sin(a) * d, bl.getY() + 0.3, bl.getZ() + Math.cos(a) * d);
+                b.world.spawnParticle(Particle.DUST, l, 1, 0, 0, 0, 0, dust, true);
+            }
+        }
+    }
+
+    private void tailStrike(Boss b, FileConfiguration cfg, Location bl, double yaw) {
+        double dmg = Math.min(cfg.getDouble("boss.tail-damage", 4.0) * damageScale(b, cfg, bl),
+                cfg.getDouble("boss.max-hit", 10.0));
+        World world = b.world;
+        Location c = bl.clone();
+        for (int i = -6; i <= 6; i++) {
+            double a = yaw + Math.PI + i * 0.25;
+            for (double d = 2.0; d <= 9.0; d += 1.5) {
+                Location l = new Location(world, c.getX() - Math.sin(a) * d, c.getY() + 0.5, c.getZ() + Math.cos(a) * d);
+                world.spawnParticle(Particle.SWEEP_ATTACK, l, 1, 0, 0, 0, 0, null, true);
+                world.spawnParticle(Particle.FLAME, l, 2, 0.2, 0.2, 0.2, 0.02, null, true);
+            }
+        }
+        snd(b, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 8.0f, 0.5f);
+        snd(b, Sound.ENTITY_RAVAGER_ATTACK, 8.0f, 0.5f);
+        double fx = -Math.sin(yaw);
+        double fz = Math.cos(yaw);
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.getScheduler().run(plugin, t -> {
+                if (!p.getWorld().equals(world)) {
+                    return;
+                }
+                Location pl = p.getLocation();
+                double dx = pl.getX() - c.getX();
+                double dz = pl.getZ() - c.getZ();
+                double len = Math.hypot(dx, dz);
+                if (len > 9.0 || len < 0.1 || Math.abs(pl.getY() - c.getY()) > 4.0) {
+                    return;
+                }
+                if ((dx * fx + dz * fz) / len > 0.3) { // sadece arka yarım daire
+                    return;
+                }
+                p.damage(dmg);
+                p.setVelocity(new Vector(dx / len, 0, dz / len).multiply(1.1).setY(0.5));
+            }, null);
         }
     }
 

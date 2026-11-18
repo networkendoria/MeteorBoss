@@ -10,9 +10,9 @@ commands:
   meteor:
     description: Meteor etkinliği komutları
     usage: /meteor [x z] | /meteor reload | /meteor etkinlik [-z|-k] | /meteor debug
-    permission: meteorboss.admin
+    permission: typhonboss
 
 permissions:
-  meteorboss.admin:
-    description: Meteor komutlarını kullanma izni
+  typhonboss:
+    description: Typhon/meteor komutlarını kullanma izni
     default: op

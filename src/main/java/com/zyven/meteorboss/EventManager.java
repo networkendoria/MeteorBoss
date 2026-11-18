@@ -40,6 +40,7 @@ import java.util.function.Consumer;
 public final class EventManager {
 
     private static final long FAST_CLOSE_MS = 5000L;
+    private static final long DEATH_CLOSE_MS = 2000L;
 
     private final MeteorBossPlugin plugin;
     private final BackupStore backup;
@@ -491,14 +492,18 @@ public final class EventManager {
     // ------------------------------------------------------------------ kapanma
 
     private synchronized void startClose(Session s, boolean fast) {
+        startClose(s, fast, 0L);
+    }
+
+    private synchronized void startClose(Session s, boolean fast, long overrideMs) {
         if (s.state == Session.State.CLOSING || s.state == Session.State.DONE) {
             return;
         }
         s.state = Session.State.CLOSING;
         s.fastClose = fast;
         s.closeStart = System.currentTimeMillis();
-        s.closeDuration = fast ? FAST_CLOSE_MS
-                : Math.max(10L, plugin.getConfig().getLong("close-duration-seconds", 300L)) * 1000L;
+        s.closeDuration = overrideMs > 0 ? overrideMs : fast ? FAST_CLOSE_MS
+                : Math.max(10L, plugin.getConfig().getLong("close-duration-seconds", 120L)) * 1000L;
 
         World world = Bukkit.getWorld(s.worldName);
         if (world == null) {
@@ -630,6 +635,27 @@ public final class EventManager {
     // ------------------------------------------------------------------ komutlar için
 
     /** /meteor etkinlik -k : her şeyi bitirir, çukur 5 saniyede kapanır. */
+    /** Boss ölünce çukur 2 saniyede kapanır. */
+    public synchronized void bossDied() {
+        Session s = current;
+        if (s == null) {
+            return;
+        }
+        switch (s.state) {
+            case ACTIVE -> {
+                s.cancelTasks();
+                startClose(s, true, DEATH_CLOSE_MS);
+            }
+            case CLOSING -> {
+                s.closeStart = System.currentTimeMillis();
+                s.closeDuration = DEATH_CLOSE_MS;
+            }
+            default -> {
+            }
+        }
+        plugin.log("Boss öldü, çukur " + (DEATH_CLOSE_MS / 1000) + " saniyede kapanıyor.");
+    }
+
     public synchronized boolean forceEnd() {
         boolean bossGone = boss != null && boss.removeNow();
         Session s = current;

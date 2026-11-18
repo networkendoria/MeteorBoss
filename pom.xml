@@ -32,7 +32,7 @@
     </dependencies>
 
     <build>
-        <finalName>MeteorBoss-${project.version}</finalName>
+        <finalName>Typhon</finalName>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>

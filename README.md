@@ -3,7 +3,7 @@
 Folia 26.2 için meteor etkinliği: gökten meteor düşer, "Cehennem Çukuru" açılır, içinden boss **Typhon** çıkar.
 Paket (resource pack) gerekmez, boss vanilla blok display'lerinden oluşur.
 
-## Komutlar (izin: `meteorboss.admin`, varsayılan op)
+## Komutlar (izin: `typhonboss`, varsayılan op; op olmayanlara bu izin verilirse kullanabilirler)
 - `/meteor` : baktığın yönde 10 blok ileriye meteor düşürür (30 dk bekleme)
 - `/meteor <x> <z> [dünya]` : belirli yere düşürür
 - `/meteor etkinlik -z` : bekleme süresini yok sayarak başlatır

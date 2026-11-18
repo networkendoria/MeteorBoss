@@ -12,8 +12,8 @@ fall-ticks: 160
 # Boss çıktıktan kaç saniye sonra çukur kapanmaya başlasın
 close-delay-seconds: 10
 
-# Çukurun kapanma süresi (saniye). 300 = 5 dakika
-close-duration-seconds: 300
+# Çukurun kapanma süresi (saniye). 120 = 2 dakika. Boss ölünce çukur her zaman 2 saniyede kapanır
+close-duration-seconds: 120
 
 # İki etkinlik arasında en az kaç dakika olsun
 cooldown-minutes: 30
@@ -51,6 +51,8 @@ resource-pack:
   prompt: "<light_purple>Typhon modeli için paket"
 
 messages:
+  intro-title: "<gradient:#ffb12b:#ff2a2a><bold>TYPHON IS HERE</bold></gradient>"
+  intro-subtitle: "<gray>Canavarların babası uyandı"
   super-warning: "<dark_red>⚠ <gold><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"
   title: "<gradient:#ffb12b:#ff2a2a><bold>☄ METEOR ☄</bold></gradient>"
   subtitle: "<gray>Gökyüzünden bir şey düşüyor..."
@@ -110,6 +112,9 @@ boss:
     force-on-phase3: true
     # Uyarı yazısı kaç blok yakındakilere görünsün
     warning-radius: 70
+  # Kuyruk darbesi: arkasına geçen oyuncuya vurur (hasar, bekleme saniyesi)
+  tail-damage: 4
+  tail-cooldown-seconds: 5
   # Hitbox ölçeği (zombi gövdesi). 3.2 yaklaşık kafa boyuna denk gelir, kanat/kuyruk vurulmaz
   hitbox-scale: 3.2
   # Yakındaki (45 blok) her ek oyuncu için saldırı hasarı yüzde kaç artsın, en fazla kaç kat
