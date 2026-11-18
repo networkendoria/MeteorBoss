@@ -4,7 +4,6 @@ import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.HeightMap;
@@ -669,12 +668,6 @@ public final class BossManager {
             if (b.spawnShield > 0) {
                 b.spawnShield--;
                 b.shield = true;
-                if (t % 2 == 0) {
-                    shieldBubble(b, bl);
-                }
-                if (b.spawnShield == 70 || b.spawnShield == 40 || b.spawnShield == 10) {
-                    roar(b, 14.0f);
-                }
                 if (b.spawnShield == 0 && b.superState != 1) {
                     b.shield = false;
                 }
@@ -755,7 +748,6 @@ public final class BossManager {
             b.poseNow = true;
             b.spawnShield = 100; // doğunca 5 saniye vurulmaz
             b.shield = true;
-            intro(b, cfg);
             b.body.setAI(true);
             b.body.setInvulnerable(false);
             spawnCrystals(b);
@@ -1365,30 +1357,7 @@ public final class BossManager {
     }
 
 
-    // ------------------------------------------------------------------ giriş, hedef değiştirme, kuyruk
-
-    /** Doğuş sahnesi: kalın, tanrısal ses katmanları ve ekranda "TYPHON IS HERE". */
-    private void intro(Boss b, FileConfiguration cfg) {
-        Location at = b.lastLoc;
-        b.world.playSound(at, Sound.ENTITY_WARDEN_ROAR, SoundCategory.HOSTILE, 16.0f, 0.5f);
-        b.world.playSound(at, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 16.0f, 0.5f);
-        b.world.playSound(at, Sound.ENTITY_WITHER_SPAWN, SoundCategory.HOSTILE, 16.0f, 0.5f);
-        b.world.playSound(at, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.HOSTILE, 16.0f, 0.5f);
-        b.world.playSound(at, Sound.ENTITY_RAVAGER_ROAR, SoundCategory.HOSTILE, 16.0f, 0.3f);
-        Component title = mm.deserialize(cfg.getString("messages.intro-title",
-                "<gradient:#ffb12b:#ff2a2a><bold>TYPHON IS HERE</bold></gradient>"));
-        Component sub = mm.deserialize(cfg.getString("messages.intro-subtitle", "<gray>Canavarların babası uyandı"));
-        Title t = Title.title(title, sub, Title.Times.times(
-                java.time.Duration.ofMillis(300), java.time.Duration.ofMillis(3200), java.time.Duration.ofMillis(800)));
-        double r = cfg.getDouble("boss.bar-radius", 150.0);
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            p.getScheduler().run(plugin, x -> {
-                if (p.getWorld().equals(b.world) && p.getLocation().distanceSquared(at) <= r * r) {
-                    p.showTitle(t);
-                }
-            }, null);
-        }
-    }
+    // ------------------------------------------------------------------ hedef değiştirme, kuyruk
 
     /** Zombi tek oyuncuya kilitlenmesin: belirli aralıkla hedefi başka oyuncuya çevirir. */
     private void retarget(Boss b, Location bl, int t) {
