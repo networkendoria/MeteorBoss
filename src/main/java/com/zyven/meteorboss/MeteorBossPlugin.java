@@ -97,6 +97,19 @@ public final class MeteorBossPlugin extends JavaPlugin {
         return data.getLong("last-start", 0L);
     }
 
+    public synchronized String getLastAutoKey() {
+        return data.getString("last-auto", "");
+    }
+
+    public synchronized void setLastAutoKey(String key) {
+        data.set("last-auto", key);
+        try {
+            data.save(dataFile);
+        } catch (IOException e) {
+            logError("data.yml kaydedilemedi", e);
+        }
+    }
+
     public synchronized void setLastStart(long time) {
         data.set("last-start", time);
         try {

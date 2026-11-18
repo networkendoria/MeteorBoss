@@ -32,7 +32,12 @@ shock-knockback: 1.4
 # Otomatik etkinlik: açıksa sunucu kendi kendine rastgele bir yere meteor düşürür
 auto-event:
   enabled: false
-  # Etkinlikler arası süre (dakika). cooldown-minutes'tan küçük olmasın
+  # Belirli saatlerde başlat (tırnak içinde yaz). Boş bırakırsan aşağıdaki aralık süresi kullanılır.
+  # Örnek: times: ["18:00", "21:30"]
+  times: []
+  # Saatlerin hangi saat dilimine göre sayılacağı
+  timezone: "Europe/Istanbul"
+  # Etkinlikler arası süre (dakika), times boşsa geçerli. cooldown-minutes'tan küçük olmasın
   interval-minutes: 120
   # En az kaç oyuncu çevrimiçi olsun
   min-players: 3

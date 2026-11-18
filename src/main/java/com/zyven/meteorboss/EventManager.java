@@ -131,10 +131,31 @@ public final class EventManager {
             if (current != null || (boss != null && boss.isAlive()) || backup.exists()) {
                 return;
             }
-            long interval = Math.max(1L, cfg.getLong("auto-event.interval-minutes", 120L)) * 60_000L;
-            long since = Math.max(plugin.getLastStart(), bootTime);
-            if (System.currentTimeMillis() - since < interval) {
-                return;
+            // Belirli saatler varsa (örn. "18:00") sadece o dakikada başlar, yoksa aralık süresine bakar
+            List<String> times = cfg.getStringList("auto-event.times");
+            String clockKey = null;
+            if (!times.isEmpty()) {
+                java.time.ZoneId zone;
+                try {
+                    zone = java.time.ZoneId.of(cfg.getString("auto-event.timezone", "Europe/Istanbul"));
+                } catch (Exception e) {
+                    zone = java.time.ZoneId.systemDefault();
+                }
+                java.time.LocalDateTime now = java.time.LocalDateTime.now(zone);
+                String hm = String.format("%02d:%02d", now.getHour(), now.getMinute());
+                if (!times.contains(hm)) {
+                    return;
+                }
+                clockKey = now.toLocalDate() + " " + hm;
+                if (clockKey.equals(plugin.getLastAutoKey())) {
+                    return;
+                }
+            } else {
+                long interval = Math.max(1L, cfg.getLong("auto-event.interval-minutes", 120L)) * 60_000L;
+                long since = Math.max(plugin.getLastStart(), bootTime);
+                if (System.currentTimeMillis() - since < interval) {
+                    return;
+                }
             }
             List<Player> online = new ArrayList<>(Bukkit.getOnlinePlayers());
             if (online.size() < Math.max(1, cfg.getInt("auto-event.min-players", 3))) {
@@ -142,6 +163,9 @@ public final class EventManager {
             }
             if (!autoBusy.compareAndSet(false, true)) {
                 return;
+            }
+            if (clockKey != null) {
+                plugin.setLastAutoKey(clockKey);
             }
             Player p = online.get(ThreadLocalRandom.current().nextInt(online.size()));
             p.getScheduler().run(plugin, t -> {
