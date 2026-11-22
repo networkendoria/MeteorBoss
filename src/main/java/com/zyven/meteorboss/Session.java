@@ -37,6 +37,8 @@ public final class Session {
     public final long startedAt = System.currentTimeMillis();
 
     public volatile int groundY;
+    /** Komutta y verildiyse zemin yüksekliği buradan alınır. */
+    public volatile Integer fixedGroundY = null;
     public volatile State state = State.FALLING;
     public volatile boolean cancelled = false;
     public volatile boolean fastClose = false;

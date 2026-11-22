@@ -9,7 +9,7 @@ description: Meteor düşme ve boss etkinliği
 commands:
   meteor:
     description: Meteor etkinliği komutları
-    usage: /meteor [x z] | /meteor reload | /meteor etkinlik [-z|-k] | /meteor debug
+    usage: /meteor [dünya x y z] | /meteor reload | /meteor etkinlik [-z|-k] | /meteor debug
     permission: typhonboss
 
 permissions:

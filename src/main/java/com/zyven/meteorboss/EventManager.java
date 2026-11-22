@@ -72,6 +72,11 @@ public final class EventManager {
 
     /** Başarılıysa null, değilse oyuncuya gösterilecek hata yazısı döner. */
     public synchronized String start(World world, int x, int z, boolean force) {
+        return start(world, x, z, null, force);
+    }
+
+    /** fixedY verilirse (oyuncunun ayak yüksekliği) meteor tam o yüksekliğe çarpar, yoksa en üst blok bulunur. */
+    public synchronized String start(World world, int x, int z, Integer fixedY, boolean force) {
         if (world.getEnvironment() != World.Environment.NORMAL) {
             return "Meteor şimdilik sadece normal dünyada (overworld) düşer.";
         }
@@ -92,6 +97,7 @@ public final class EventManager {
 
         int radius = Math.max(6, Math.min(30, plugin.getConfig().getInt("arena-radius", 15)));
         Session s = new Session(world.getName(), x, z, radius);
+        s.fixedGroundY = fixedY == null ? null : fixedY - 1;
         current = s;
         plugin.setLastStart(now);
         plugin.log("Etkinlik başladı: " + world.getName() + " " + x + " " + z + " (zorla=" + force + ")");
@@ -242,7 +248,8 @@ public final class EventManager {
             FileConfiguration cfg = plugin.getConfig();
             int x = s.centerX;
             int z = s.centerZ;
-            int groundY = world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING_NO_LEAVES);
+            int groundY = s.fixedGroundY != null ? s.fixedGroundY
+                    : world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING_NO_LEAVES);
             s.groundY = groundY;
 
             int fallTicks = Math.max(60, cfg.getInt("fall-ticks", 160));

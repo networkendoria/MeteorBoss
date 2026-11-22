@@ -96,6 +96,24 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean callAtCoords(CommandSender sender, String[] args) {
+        // /meteor <dünya> <x> <y> <z>   ya da   /meteor <dünya> <x> <z>
+        if (args.length >= 3 && Bukkit.getWorld(args[0]) != null) {
+            World w = Bukkit.getWorld(args[0]);
+            try {
+                if (args.length >= 4) {
+                    int x = (int) Math.floor(Double.parseDouble(args[1]));
+                    int y = (int) Math.floor(Double.parseDouble(args[2]));
+                    int z = (int) Math.floor(Double.parseDouble(args[3]));
+                    return launch(sender, w, x, y, z, false);
+                }
+                int x = (int) Math.floor(Double.parseDouble(args[1]));
+                int z = (int) Math.floor(Double.parseDouble(args[2]));
+                return launch(sender, w, x, null, z, false);
+            } catch (NumberFormatException e) {
+                sender.sendMessage(events.text("<red>Kullanım: /meteor <dünya> <x> <y> <z>"));
+                return true;
+            }
+        }
         if (args.length < 2) {
             sender.sendMessage(events.text("<red>Kullanım: /meteor [x z] | reload | etkinlik [-z|-k] | debug"));
             return true;
@@ -125,7 +143,11 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean launch(CommandSender sender, World world, int x, int z, boolean force) {
-        String error = events.start(world, x, z, force);
+        return launch(sender, world, x, null, z, force);
+    }
+
+    private boolean launch(CommandSender sender, World world, int x, Integer y, int z, boolean force) {
+        String error = events.start(world, x, z, y, force);
         if (error != null) {
             sender.sendMessage(events.text("<red>" + error));
             return true;
@@ -143,13 +165,18 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
                     out.add(s);
                 }
             }
+            for (World w : Bukkit.getWorlds()) {
+                if (w.getName().toLowerCase().startsWith(args[0].toLowerCase())) {
+                    out.add(w.getName());
+                }
+            }
         } else if (args.length == 2 && args[0].equalsIgnoreCase("etkinlik")) {
             for (String s : List.of("-z", "-k")) {
                 if (s.startsWith(args[1].toLowerCase())) {
                     out.add(s);
                 }
             }
-        } else if (args.length == 3) {
+        } else if (args.length == 3 && Bukkit.getWorld(args[0]) == null) {
             for (World w : Bukkit.getWorlds()) {
                 if (w.getName().toLowerCase().startsWith(args[2].toLowerCase())) {
                     out.add(w.getName());
