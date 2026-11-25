@@ -13,7 +13,7 @@ Paket (resource pack) gerekmez, boss vanilla blok display'lerinden oluşur.
 
 ## Yayına alırken
 1. Jar'ı `plugins/` içine at, ilk açılışta `config.yml` oluşur.
-2. `boss.model-mode: blocks` kalsın. Lag olursa `boss.model-quality: medium` ya da `low`.
+2. `boss.model-mode: blocks` olmalıdır (pack istenmediği için kurulmadı). Lag olursa `boss.model-quality: medium` ya da `low`.
 3. Otomatik etkinlik için `auto-event.enabled: true` yap.
 4. Önce `/meteor` ile bir kez dene, sonra duyur.
 5. Sorun olursa `/meteor etkinlik -k`.
@@ -23,3 +23,10 @@ Paket (resource pack) gerekmez, boss vanilla blok display'lerinden oluşur.
 - Süper saldırı "Boşluk Patlaması": 5 sn hazırlanır, bu sırada kimse vuramaz, sonra herkesi savurur. Aralık 5 dk.
 - Can: temel + oyuncu başına ek. Hasar: yakındaki oyuncu sayısına göre hafif artar (üst sınırlı).
 - Kanat ve kuyruk görsel, hitbox gövde ve kafadır.
+
+## Geliştiriciler ve kaynaklar
+- Zyven, geliştirici, taban ve teknik oluşturucu. Altyapı ve ilerleyişi hazırladı.
+- Claude, geliştirici, araştırma ve hataları onardı (fix). Açıklamalar ve diyer ayrıntılar.
+- Bu mod `avenormc`'ye özel olarak tasarlanmış ve geliştirilmiştir.
+
+- ip: **oyna.avenormc.com** / site: **avenormc.com**
