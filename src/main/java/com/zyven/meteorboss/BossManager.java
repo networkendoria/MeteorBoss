@@ -1279,7 +1279,27 @@ public final class BossManager {
             return;
         }
         FileConfiguration cfg = plugin.getConfig();
-        e.getDrops().clear();
+        Location deathLoc = e.getEntity().getLocation();
+        World world = deathLoc.getWorld();
+
+        // Öldüren oyuncu: son vuruşu yapan, yoksa en çok hasar veren
+        Player killer = e.getEntity().getKiller();
+        if (killer == null) {
+            UUID top = null;
+            double best = 0.0;
+            for (Map.Entry<UUID, Double> en : b.damage.entrySet()) {
+                if (en.getValue() > best) {
+                    best = en.getValue();
+                    top = en.getKey();
+                }
+            }
+            if (top != null) {
+                killer = Bukkit.getPlayer(top);
+            }
+        }
+
+        // Ödüller
+        List<ItemStack> items = new ArrayList<>();
         for (String reward : cfg.getStringList("boss.rewards")) {
             String[] parts = reward.split(":");
             Material m = Material.matchMaterial(parts[0].trim());
@@ -1297,14 +1317,74 @@ public final class BossManager {
             }
             while (amount > 0) {
                 int n = Math.min(amount, m.getMaxStackSize());
-                e.getDrops().add(new ItemStack(m, n));
+                items.add(new ItemStack(m, n));
                 amount -= n;
             }
         }
-        e.setDroppedExp(cfg.getInt("boss.exp", 300));
-        plugin.log("Typhon öldü.");
+        int exp = cfg.getInt("boss.exp", 300);
+        e.getDrops().clear();
+        if (killer != null) {
+            // Eşyalar ve tecrübe doğrudan öldüren oyuncunun envanterine gider
+            e.setDroppedExp(0);
+            giveRewards(killer, items, exp, deathLoc);
+            announceWinner(killer.getName(), world, deathLoc, cfg);
+        } else {
+            e.getDrops().addAll(items);
+            e.setDroppedExp(exp);
+        }
+        plugin.log("Typhon öldü" + (killer != null ? " (" + killer.getName() + ")" : "") + ".");
         finishBoss(b, true);
         plugin.getEvents().bossDied();
+    }
+
+    /** Eşyaları envantere ekler, sığmayanlar oyuncunun ayağına düşer. */
+    private void giveRewards(Player killer, List<ItemStack> items, int exp, Location fallback) {
+        World world = fallback.getWorld();
+        killer.getScheduler().run(plugin, t -> {
+            for (ItemStack it : items) {
+                for (ItemStack left : killer.getInventory().addItem(it).values()) {
+                    killer.getWorld().dropItemNaturally(killer.getLocation(), left);
+                }
+            }
+            killer.giveExp(exp);
+        }, () -> Bukkit.getRegionScheduler().run(plugin, fallback, t -> {
+            // oyuncu çıkmış/ölmüşse eşyalar ölüm noktasına düşer
+            for (ItemStack it : items) {
+                world.dropItemNaturally(fallback, it);
+            }
+        }));
+    }
+
+    /** Sohbete mesaj, 10 saniye boyunca azalan "KAZANAN" boss barı. */
+    private void announceWinner(String name, World world, Location at, FileConfiguration cfg) {
+        Component chat = mm.deserialize(cfg.getString("messages.killed",
+                "<gold>⚔ <yellow><bold>%player%</bold> <gray>Typhon'u yendi!").replace("%player%", name));
+        Bukkit.getServer().sendMessage(chat);
+
+        Component title = mm.deserialize(cfg.getString("messages.victory-bar",
+                "<gradient:#ffb12b:#ff2a2a><bold>KAZANAN</bold></gradient> <gray>│ <white>%player%").replace("%player%", name));
+        BossBar bar = BossBar.bossBar(title, 1.0f, BossBar.Color.YELLOW, BossBar.Overlay.PROGRESS);
+        double r = cfg.getDouble("boss.bar-radius", 150.0);
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.getScheduler().run(plugin, t -> {
+                if (p.getWorld().equals(world) && p.getLocation().distanceSquared(at) <= r * r) {
+                    p.showBossBar(bar);
+                }
+            }, null);
+        }
+        final int steps = 40; // 40 adım x 5 tick = 10 saniye
+        int[] step = {0};
+        Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, task -> {
+            step[0]++;
+            if (step[0] >= steps) {
+                task.cancel();
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    p.getScheduler().run(plugin, t -> p.hideBossBar(bar), null);
+                }
+                return;
+            }
+            bar.progress(1.0f - step[0] / (float) steps);
+        }, 5L, 5L);
     }
 
     private void finishBoss(Boss b, boolean died) {

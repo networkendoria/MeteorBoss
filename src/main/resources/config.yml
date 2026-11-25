@@ -56,6 +56,8 @@ resource-pack:
   prompt: "<light_purple>Typhon modeli için paket"
 
 messages:
+  killed: "<gold>⚔ <yellow><bold>%player%</bold> <gray>Typhon'u yendi!"
+  victory-bar: "<gradient:#ffb12b:#ff2a2a><bold>KAZANAN</bold></gradient> <gray>│ <white>%player%"
   super-warning: "<dark_red>⚠ <gold><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"
   title: "<gradient:#ffb12b:#ff2a2a><bold>☄ METEOR ☄</bold></gradient>"
   subtitle: "<gray>Gökyüzünden bir şey düşüyor..."
