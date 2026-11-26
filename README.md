@@ -13,7 +13,7 @@ Paket (resource pack) gerekmez, boss vanilla blok display'lerinden oluşur.
 
 ## Yayına alırken
 1. Jar'ı `plugins/` içine at, ilk açılışta `config.yml` oluşur.
-2. `boss.model-mode: blocks` olmalıdır (pack istenmediği için kurulmadı). Lag olursa `boss.model-quality: medium` ya da `low`.
+2. Lag olursa `boss.model-quality: medium` ya da `low` yap.
 3. Otomatik etkinlik için `auto-event.enabled: true` yap.
 4. Önce `/meteor` ile bir kez dene, sonra duyur.
 5. Sorun olursa `/meteor etkinlik -k`.

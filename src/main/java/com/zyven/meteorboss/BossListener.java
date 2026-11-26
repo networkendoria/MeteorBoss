@@ -10,9 +10,6 @@ import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityTransformEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 
 /** Typhon ile ilgili oyun olayları: hasar kuralları, ödül, blok kırmama. */
 public final class BossListener implements Listener {
@@ -74,18 +71,4 @@ public final class BossListener implements Listener {
         }
     }
 
-    @EventHandler
-    public void onJoin(PlayerJoinEvent e) {
-        boss.onJoin(e.getPlayer());
-    }
-
-    @EventHandler
-    public void onPackStatus(PlayerResourcePackStatusEvent e) {
-        boss.onPackStatus(e);
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent e) {
-        boss.onQuit(e.getPlayer());
-    }
 }

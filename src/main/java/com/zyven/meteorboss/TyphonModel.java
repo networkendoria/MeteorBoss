@@ -27,10 +27,6 @@ final class TyphonModel {
     static final int GROUPS = 13;
     static final String[] GROUP_NAMES = {"body", "arm_l", "arm_r", "leg_l", "leg_r", "head", "jaw", "chest",
             "cry_l", "cry_r", "wing_l", "wing_r", "tail"};
-    /** Paket modunda her grup tek bir modeldir; model bu ölçekle büyütülür. */
-    static final double PACK_SCALE = 3.0;
-    /** Paket modunda modelin dikey kaydırması (metre). */
-    static final double PACK_SHIFT_Y = 3.5;
 
     /**
      * Görünüm parçası. Ölçüler metre, ayak ortasına göre, cy = alt kenar.

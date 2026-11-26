@@ -9,7 +9,6 @@ import org.bukkit.Color;
 import org.bukkit.HeightMap;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
@@ -20,7 +19,6 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.EnderCrystal;
-import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -30,11 +28,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
@@ -106,7 +100,6 @@ public final class BossManager {
         BossBar bar;
         final List<Part> parts = new ArrayList<>();
         final List<Display> displays = new ArrayList<>();
-        boolean pack; // true: özel model (resource pack), false: blok modeli
         final List<EnderCrystal> crystals = new CopyOnWriteArrayList<>();
         final Map<UUID, Double> damage = new ConcurrentHashMap<>();
 
@@ -223,25 +216,8 @@ public final class BossManager {
                 case "medium" -> 1;
                 default -> 2;
             };
-            nb.pack = cfg.getString("boss.model-mode", "blocks").equalsIgnoreCase("pack");
-            if (nb.pack) {
-                for (int g = 0; g < GROUPS; g++) {
-                    final int gg = g;
-                    ItemDisplay d = world.spawn(home, ItemDisplay.class, dd -> {
-                        dd.setItemStack(packItem(gg, 1));
-                        dd.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                        dd.setTransformation(packTransform(nb, gg, 0.05));
-                        dd.setPersistent(false);
-                        dd.setInterpolationDuration(4);
-                        dd.setTeleportDuration(3);
-                        dd.setViewRange(3.0f);
-                        dd.setBrightness(new Display.Brightness(12, 12));
-                    });
-                    nb.displays.add(d);
-                }
-            }
             for (Part pt : PARTS) {
-                if (nb.pack || pt.detail() > level) {
+                if (pt.detail() > level) {
                     continue;
                 }
                 BlockDisplay d = world.spawn(home, BlockDisplay.class, dd -> {
@@ -518,24 +494,6 @@ public final class BossManager {
             b.sig[g] = sig[g];
         }
 
-        if (b.pack) {
-            for (int g = 0; g < GROUPS && g < b.displays.size(); g++) {
-                if (!changed[g]) {
-                    continue;
-                }
-                Display d = b.displays.get(g);
-                if (!d.isValid()) {
-                    continue;
-                }
-                Transformation tr = packTransform(b, g, k);
-                d.getScheduler().run(plugin, x -> {
-                    d.setInterpolationDelay(0);
-                    d.setInterpolationDuration(4);
-                    d.setTransformation(tr);
-                }, null);
-            }
-            return;
-        }
 
         for (int i = 0; i < b.parts.size(); i++) {
             Part pt = b.parts.get(i);
@@ -555,84 +513,6 @@ public final class BossManager {
         }
     }
 
-    // ------------------------------------------------------------------ özel model (resource pack)
-
-    private final Set<UUID> packLoaded = ConcurrentHashMap.newKeySet();
-
-    private static ItemStack packItem(int group, int variant) {
-        ItemStack st = new ItemStack(Material.PAPER);
-        ItemMeta meta = st.getItemMeta();
-        meta.setItemModel(new NamespacedKey("typhon", GROUP_NAMES[group] + "_" + variant));
-        st.setItemMeta(meta);
-        return st;
-    }
-
-    /** Paket modunda bir grubun (kol, kafa...) o anki duruşa göre dönüşümü. */
-    private static Transformation packTransform(Boss b, int group, double k) {
-        float scale = (float) PACK_SCALE;
-        Vector3f t = new Vector3f(0f, (float) PACK_SHIFT_Y, 0f);
-        Vector3f sc = new Vector3f(scale, scale, scale);
-        if (group == G_CHEST) {
-            sc.y *= (float) (1.0 + b.breath);
-        } else if (group == G_CRY_L) {
-            t.y += (float) b.bobL;
-        } else if (group == G_CRY_R) {
-            t.y += (float) b.bobR;
-        }
-        Quaternionf q = new Quaternionf();
-        Vector3f pivot = pivotOf(group);
-        double angle = angleOf(b, group);
-        if (pivot != null && Math.abs(angle) > 1e-4) {
-            Quaternionf qp = rot(group, angle);
-            t.sub(pivot);
-            qp.transform(t);
-            t.add(pivot);
-            q = qp;
-        }
-        float kk = (float) k;
-        return new Transformation(t.mul(kk), q, sc.mul(kk), new Quaternionf());
-    }
-
-    /** Oyuncu girince (ayarlıysa) paketi gönderir. */
-    public void onJoin(Player p) {
-        FileConfiguration cfg = plugin.getConfig();
-        String url = cfg.getString("resource-pack.url", "");
-        if (url == null || url.isBlank() || !cfg.getString("boss.model-mode", "blocks").equalsIgnoreCase("pack")) {
-            return;
-        }
-        byte[] hash = hex(cfg.getString("resource-pack.sha1", ""));
-        Component prompt = mm.deserialize(cfg.getString("resource-pack.prompt", "<light_purple>Typhon modeli için paket"));
-        UUID id = UUID.nameUUIDFromBytes("meteorboss-typhon".getBytes());
-        p.getScheduler().runDelayed(plugin, t -> p.addResourcePack(id, url, hash, net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(prompt), false), null, 40L);
-    }
-
-    public void onPackStatus(PlayerResourcePackStatusEvent e) {
-        if (e.getStatus() == PlayerResourcePackStatusEvent.Status.SUCCESSFULLY_LOADED) {
-            packLoaded.add(e.getPlayer().getUniqueId());
-        } else if (e.getStatus() != PlayerResourcePackStatusEvent.Status.ACCEPTED
-                && e.getStatus() != PlayerResourcePackStatusEvent.Status.DOWNLOADED) {
-            packLoaded.remove(e.getPlayer().getUniqueId());
-        }
-    }
-
-    public void onQuit(Player p) {
-        packLoaded.remove(p.getUniqueId());
-    }
-
-    private static byte[] hex(String s) {
-        if (s == null || s.length() != 40) {
-            return null;
-        }
-        byte[] out = new byte[20];
-        try {
-            for (int i = 0; i < 20; i++) {
-                out[i] = (byte) Integer.parseInt(s.substring(i * 2, i * 2 + 2), 16);
-            }
-        } catch (NumberFormatException e) {
-            return null;
-        }
-        return out;
-    }
 
     // ------------------------------------------------------------------ döngü
 
@@ -772,11 +652,10 @@ public final class BossManager {
 
     /** Parçaları zombinin konumuna taşır. */
     private void syncParts(Boss b, Location bl) {
-        // Görünüm zombinin baktığı yöne döner ama öne/arkaya eğilmez (pitch 0); model yönü ayarlanabilir
-        float offset = b.pack ? (float) plugin.getConfig().getDouble("boss.model-yaw-offset", 180.0) : 0f;
+        // Görünüm zombinin baktığı yöne döner ama öne/arkaya eğilmez (pitch 0)
         Location target = bl.clone();
         target.setPitch(0f);
-        target.setYaw(bl.getYaw() + offset);
+        target.setYaw(bl.getYaw());
         Location last = b.lastSync;
         if (last != null && last.getWorld() == target.getWorld()
                 && last.distanceSquared(target) < 0.0004 && Math.abs(last.getYaw() - target.getYaw()) < 1.0f) {
@@ -1198,14 +1077,6 @@ public final class BossManager {
                 }
             }
         }
-        if (b.pack) {
-            int variant = Math.min(3, b.phase);
-            for (int g = 0; g < GROUPS && g < b.displays.size(); g++) {
-                Display pd = b.displays.get(g);
-                ItemStack st = packItem(g, variant);
-                pd.getScheduler().run(plugin, x -> ((ItemDisplay) pd).setItemStack(st), null);
-            }
-        }
         b.forcePose = true; // çatlaklar görünür olsun
         b.poseNow = true;
         b.roarTicks = 30;
@@ -1233,20 +1104,6 @@ public final class BossManager {
                     p.showBossBar(b.bar);
                 } else {
                     p.hideBossBar(b.bar);
-                }
-                if (b.pack) {
-                    boolean has = packLoaded.contains(p.getUniqueId());
-                    for (Display d : b.displays) {
-                        try {
-                            if (has) {
-                                p.showEntity(plugin, d);
-                            } else {
-                                p.hideEntity(plugin, d);
-                            }
-                        } catch (Throwable ignored) {
-                            // varlık kaldırılmış olabilir
-                        }
-                    }
                 }
             }, null);
         }
