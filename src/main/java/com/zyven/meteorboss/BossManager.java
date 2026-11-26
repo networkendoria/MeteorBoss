@@ -53,15 +53,6 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class BossManager {
 
-    private static final Vector3f PIVOT_ARM_L = new Vector3f(-2.15f, 4.3f, 0f);
-    private static final Vector3f PIVOT_ARM_R = new Vector3f(2.15f, 4.3f, 0f);
-    private static final Vector3f PIVOT_LEG_L = new Vector3f(-0.6f, 2.2f, 0f);
-    private static final Vector3f PIVOT_LEG_R = new Vector3f(0.6f, 2.2f, 0f);
-    private static final Vector3f PIVOT_HEAD = new Vector3f(0f, 4.6f, 0f);
-    private static final Vector3f PIVOT_WING_L = new Vector3f(-0.7f, 4.6f, -0.9f);
-    private static final Vector3f PIVOT_WING_R = new Vector3f(0.7f, 4.6f, -0.9f);
-    private static final Vector3f PIVOT_TAIL = new Vector3f(0f, 1.5f, -0.6f);
-
     private static final Set<DamageCause> IMMUNE = EnumSet.of(
             DamageCause.SUFFOCATION, DamageCause.DROWNING, DamageCause.FALL, DamageCause.CRAMMING,
             DamageCause.FLY_INTO_WALL, DamageCause.FREEZE, DamageCause.DRYOUT);
@@ -72,105 +63,14 @@ public final class BossManager {
             DamageCause.MAGIC, DamageCause.POISON, DamageCause.WITHER, DamageCause.LIGHTNING,
             DamageCause.DRAGON_BREATH, DamageCause.FALLING_BLOCK);
 
-    /** Telegraflı (önceden uyarı veren) saldırı. */
-    private static final class Attack {
-        final int type; // 1 = yer vuruşu, 2 = boşluk darbesi
-        final int total;
-        int left;
-        final List<Location> centers;
-        final double radius;
-        final double damage;
-
-        Attack(int type, int total, List<Location> centers, double radius, double damage) {
-            this.type = type;
-            this.total = total;
-            this.left = total;
-            this.centers = centers;
-            this.radius = radius;
-            this.damage = damage;
-        }
-    }
-
-    private static final class Boss {
-        final Session session;
-        final World world;
-        final Location home;
-        Zombie body;
-        UUID bodyId;
-        BossBar bar;
-        final List<Part> parts = new ArrayList<>();
-        final List<Display> displays = new ArrayList<>();
-        final List<EnderCrystal> crystals = new CopyOnWriteArrayList<>();
-        final Map<UUID, Double> damage = new ConcurrentHashMap<>();
-
-        volatile boolean emerging = true;
-        volatile boolean removing = false;
-        volatile int lastViewerTick = 0;
-        int spawnShield = 0;
-        int nextRetarget = 100;
-        int tailCd = 120;
-        int tailLeft = 0;
-        volatile double tailSwing = 0.0;
-        final Map<Sound, Integer> lastSnd = new ConcurrentHashMap<>();
-        volatile boolean healing = false;
-        volatile boolean shield = false;
-        volatile int phase = 1;
-        volatile int tick = 0;
-        volatile int lastHitTick = 0;
-        volatile int superState = 0; // 0 bekliyor, 1 hazırlanıyor, 2 yorgun
-        volatile boolean swingFlag = false;
-        volatile boolean poseNow = false;
-        volatile boolean forcePose = false;
-        volatile int flinch = 0;
-        volatile int roarTicks = 0;
-        volatile int lastDing = -100;
-        volatile int lastHurt = -100;
-        volatile Location lastLoc;
-
-        double maxHealth;
-        double healed;
-        double healCap;
-        double baseSpeed;
-        Attack attack;
-        int cooldown = 100;
-        boolean returning;
-        Location lastPos;
-        int stuck;
-        int errors;
-        Location lastSync;
-
-        // Süper saldırı
-        int superTimer;
-        int superLeft;
-        int superTotal;
-        int superCount;
-        int exhaustLeft;
-
-        // Poz ve animasyon
-        Location poseLast;
-        boolean moving;
-        boolean swingRight;
-        double raiseL, raiseR, headE, jawE;
-        double aArmL, aArmR, aLegL, aLegR, aHead, aJaw, breath, bobL, bobR;
-        double wingE, aWing, aTail;
-        final long[] sig = new long[GROUPS];
-        double orbit;
-        int nextAmbient = 200;
-
-        Boss(Session session, World world, Location home) {
-            this.session = session;
-            this.world = world;
-            this.home = home;
-            this.lastLoc = home;
-        }
-    }
-
     private final MeteorBossPlugin plugin;
     private final MiniMessage mm = MiniMessage.miniMessage();
-    private volatile Boss boss;
+    private volatile BossState boss;
+    private final BossRewards rewards;
 
     public BossManager(MeteorBossPlugin plugin) {
         this.plugin = plugin;
+        this.rewards = new BossRewards(plugin);
     }
 
     public boolean isAlive() {
@@ -189,7 +89,7 @@ public final class BossManager {
     }
 
     private void doSpawn(Session s, World world) {
-        Boss b = null;
+        BossState b = null;
         try {
             if (boss != null) {
                 return;
@@ -197,7 +97,7 @@ public final class BossManager {
             FileConfiguration cfg = plugin.getConfig();
             int altarY = ArenaPlanner.altarY(s.groundY, s.radius, world.getMinHeight());
             Location home = new Location(world, s.centerX + 0.5, altarY + 1, s.centerZ + 0.5);
-            Boss nb = new Boss(s, world, home);
+            BossState nb = new BossState(s, world, home);
             b = nb;
 
             double base = cfg.getDouble("boss.health", 600.0);
@@ -222,7 +122,7 @@ public final class BossManager {
                 }
                 BlockDisplay d = world.spawn(home, BlockDisplay.class, dd -> {
                     dd.setBlock(pt.mat().createBlockData());
-                    dd.setTransformation(buildTransform(pt, nb, 0.05));
+                    dd.setTransformation(BossPose.transform(pt, nb, 0.05));
                     dd.setPersistent(false);
                     dd.setInterpolationDuration(4);
                     dd.setTeleportDuration(3);
@@ -249,7 +149,7 @@ public final class BossManager {
         }
     }
 
-    private void setup(Zombie z, Boss b, FileConfiguration cfg) {
+    private void setup(Zombie z, BossState b, FileConfiguration cfg) {
         setBase(z, Attribute.MAX_HEALTH, b.maxHealth);
         z.setHealth(b.maxHealth);
         setBase(z, Attribute.ATTACK_DAMAGE, cfg.getDouble("boss.melee-damage", 8.0));
@@ -281,13 +181,13 @@ public final class BossManager {
         }
     }
 
-    private Component barTitle(Boss b) {
+    private Component barTitle(BossState b) {
         return mm.deserialize(plugin.getConfig().getString("messages.bossbar", "<light_purple>Typhon")
                 .replace("%phase%", String.valueOf(b.phase)));
     }
 
     /** Aynı ses 4 tick içinde tekrar çalmaz (üst üste binip gürültü olmasın). */
-    private void snd(Boss b, Sound sound, float volume, float pitch) {
+    private void snd(BossState b, Sound sound, float volume, float pitch) {
         Integer last = b.lastSnd.get(sound);
         if (last != null && b.tick - last < 4) {
             return;
@@ -297,14 +197,14 @@ public final class BossManager {
     }
 
     /** Katmanlı kükreme: derin gövde sesi + ejderha hırıltısı + yırtıcı tını. */
-    private void roar(Boss b, float volume) {
+    private void roar(BossState b, float volume) {
         snd(b, Sound.ENTITY_RAVAGER_ROAR, volume, 0.45f);
         snd(b, Sound.ENTITY_WARDEN_ROAR, volume * 0.7f, 0.6f);
         snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, volume * 0.6f, 0.5f);
     }
 
     /** Oyuncu sayısına göre saldırı hasarı çarpanı (üst sınırlı). */
-    private double damageScale(Boss b, FileConfiguration cfg, Location at) {
+    private double damageScale(BossState b, FileConfiguration cfg, Location at) {
         int near = Math.max(1, playersNear(b.world, at, 45).size());
         double per = cfg.getDouble("boss.damage-per-player-percent", 6.0) / 100.0;
         double cap = cfg.getDouble("boss.damage-scale-cap", 1.5);
@@ -313,91 +213,8 @@ public final class BossManager {
 
     // ------------------------------------------------------------------ model ve poz
 
-    private static Vector3f pivotOf(int group) {
-        return switch (group) {
-            case G_ARM_L -> PIVOT_ARM_L;
-            case G_ARM_R -> PIVOT_ARM_R;
-            case G_LEG_L -> PIVOT_LEG_L;
-            case G_LEG_R -> PIVOT_LEG_R;
-            case G_HEAD, G_JAW -> PIVOT_HEAD;
-            case G_WING_L -> PIVOT_WING_L;
-            case G_WING_R -> PIVOT_WING_R;
-            case G_TAIL -> PIVOT_TAIL;
-            default -> null;
-        };
-    }
-
-    private static double angleOf(Boss b, int group) {
-        return switch (group) {
-            case G_ARM_L -> b.aArmL;
-            case G_ARM_R -> b.aArmR;
-            case G_LEG_L -> b.aLegL;
-            case G_LEG_R -> b.aLegR;
-            case G_HEAD -> b.aHead;
-            case G_JAW -> b.aHead + b.aJaw;
-            case G_WING_L -> -b.aWing;
-            case G_WING_R -> b.aWing;
-            case G_TAIL -> b.aTail;
-            default -> 0.0;
-        };
-    }
-
-    /** Gruba göre dönüş ekseni: kanatlar Z (çırpma), kuyruk Y (sallanma), diğerleri X. */
-    private static Quaternionf rot(int group, double angle) {
-        Quaternionf q = new Quaternionf();
-        if (group == G_WING_L || group == G_WING_R) {
-            return q.rotateZ((float) angle);
-        }
-        if (group == G_TAIL) {
-            return q.rotateY((float) angle);
-        }
-        return q.rotateX((float) angle);
-    }
-
-    /** Bir parçanın o anki duruşa göre dönüşümü. k: büyüme (çıkış sahnesinde 0..1). */
-    private static Transformation buildTransform(Part p, Boss b, double k) {
-        boolean hidden = b.phase < p.minPhase();
-        double sy = p.sy();
-        double bottom = p.cy();
-        if (p.group() == G_CHEST) {
-            sy = p.sy() * (1.0 + b.breath);
-        }
-        if (p.group() == G_CRY_L) {
-            bottom += b.bobL;
-        } else if (p.group() == G_CRY_R) {
-            bottom += b.bobR;
-        }
-
-        Vector3f half = new Vector3f((float) (p.sx() / 2), (float) (sy / 2), (float) (p.sz() / 2));
-        Vector3f center = new Vector3f((float) p.cx(), (float) (bottom + sy / 2), (float) p.cz());
-        Quaternionf q0 = new Quaternionf();
-        if (p.roll() != 0) {
-            q0.rotateZ((float) p.roll());
-        }
-        Vector3f t = new Vector3f(center).sub(q0.transform(new Vector3f(half)));
-        Quaternionf q = q0;
-
-        Vector3f pivot = pivotOf(p.group());
-        double angle = angleOf(b, p.group());
-        if (pivot != null && Math.abs(angle) > 1e-4) {
-            Quaternionf qp = rot(p.group(), angle);
-            t.sub(pivot);
-            qp.transform(t);
-            t.add(pivot);
-            q = new Quaternionf(qp).mul(q0);
-        }
-
-        if (hidden) {
-            return new Transformation(new Vector3f(center).mul((float) k), new Quaternionf(),
-                    new Vector3f(0.001f, 0.001f, 0.001f), new Quaternionf());
-        }
-        float kk = (float) k;
-        return new Transformation(t.mul(kk), q,
-                new Vector3f((float) p.sx() * kk, (float) sy * kk, (float) p.sz() * kk), new Quaternionf());
-    }
-
     /** Hedef duruşu hesaplar ve değişen grupların parçalarını günceller. */
-    private void updatePose(Boss b, int t, boolean force, double k) {
+    private void updatePose(BossState b, int t, boolean force, double k) {
         Location bl = b.lastLoc;
         b.moving = b.poseLast != null && b.poseLast.getWorld() == bl.getWorld()
                 && b.poseLast.distanceSquared(bl) > 0.01;
@@ -408,7 +225,7 @@ public final class BossManager {
         double tgtR = 0.0;
         double tgtHead = 0.0;
         double tgtJaw = 0.0;
-        Attack a = b.attack;
+        BossAttack a = b.attack;
         if (b.superState == 1) {
             tgtL = 2.7;
             tgtR = 2.7;
@@ -504,7 +321,7 @@ public final class BossManager {
             if (!d.isValid()) {
                 continue;
             }
-            Transformation tr = buildTransform(pt, b, k);
+            Transformation tr = BossPose.transform(pt, b, k);
             d.getScheduler().run(plugin, x -> {
                 d.setInterpolationDelay(0);
                 d.setInterpolationDuration(4);
@@ -516,7 +333,7 @@ public final class BossManager {
 
     // ------------------------------------------------------------------ döngü
 
-    private void tick(Boss b, ScheduledTask task) {
+    private void tick(BossState b, ScheduledTask task) {
         if (b.removing) {
             task.cancel();
             return;
@@ -602,7 +419,7 @@ public final class BossManager {
         }
     }
 
-    private void emergeTick(Boss b, FileConfiguration cfg, int t, Location bl) {
+    private void emergeTick(BossState b, FileConfiguration cfg, int t, Location bl) {
         int emergeTicks = Math.max(20, cfg.getInt("boss.emerge-ticks", 80));
         double k = Math.min(1.0, t / (double) emergeTicks);
 
@@ -639,7 +456,7 @@ public final class BossManager {
         }
     }
 
-    private void spawnCrystals(Boss b) {
+    private void spawnCrystals(BossState b) {
         for (int i = 0; i < 4; i++) {
             Location at = b.lastLoc.clone().add(0, 5.0, 0);
             EnderCrystal c = b.world.spawn(at, EnderCrystal.class, cc -> {
@@ -651,7 +468,7 @@ public final class BossManager {
     }
 
     /** Parçaları zombinin konumuna taşır. */
-    private void syncParts(Boss b, Location bl) {
+    private void syncParts(BossState b, Location bl) {
         // Görünüm zombinin baktığı yöne döner ama öne/arkaya eğilmez (pitch 0)
         Location target = bl.clone();
         target.setPitch(0f);
@@ -669,7 +486,7 @@ public final class BossManager {
         }
     }
 
-    private void orbitCrystals(Boss b, Location bl, int t) {
+    private void orbitCrystals(BossState b, Location bl, int t) {
         b.orbit += b.superState == 1 ? 0.18 : 0.05;
         int i = 0;
         for (EnderCrystal c : b.crystals) {
@@ -690,7 +507,7 @@ public final class BossManager {
         }
     }
 
-    private void healTick(Boss b, FileConfiguration cfg, int t, double health) {
+    private void healTick(BossState b, FileConfiguration cfg, int t, double health) {
         int idleTicks = cfg.getInt("boss.heal-idle-seconds", 10) * 20;
         int alive = 0;
         for (EnderCrystal c : b.crystals) {
@@ -714,7 +531,7 @@ public final class BossManager {
     }
 
     /** Kendi sesleri: nefes/hırlama, ayak sesi, ayak dibinde toz. */
-    private void ambientTick(Boss b, Location bl, int t) {
+    private void ambientTick(BossState b, Location bl, int t) {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         if (t >= b.nextAmbient) {
             b.nextAmbient = t + 120 + rnd.nextInt(100);
@@ -750,7 +567,7 @@ public final class BossManager {
     }
 
     /** Çıktığı çukurun {roam-limit} blok dışına çıkamaz, çıkarsa geri döner. */
-    private void roamTick(Boss b, FileConfiguration cfg, Location bl) {
+    private void roamTick(BossState b, FileConfiguration cfg, Location bl) {
         double limit = cfg.getDouble("boss.roam-limit", 50.0);
         double dist = Math.hypot(bl.getX() - b.home.getX(), bl.getZ() - b.home.getZ());
         if (!b.returning && dist > limit) {
@@ -775,7 +592,7 @@ public final class BossManager {
     }
 
     /** Bir yere sıkışırsa ya da blok içinde kalırsa kurtarır. */
-    private void stuckTick(Boss b, Location bl) {
+    private void stuckTick(BossState b, Location bl) {
         if (b.lastPos != null && b.lastPos.getWorld() == bl.getWorld() && b.lastPos.distanceSquared(bl) < 0.25) {
             b.stuck += 20;
         } else {
@@ -806,13 +623,13 @@ public final class BossManager {
 
     // ------------------------------------------------------------------ süper saldırı
 
-    private double blastRadius(Boss b, FileConfiguration cfg) {
+    private double blastRadius(BossState b, FileConfiguration cfg) {
         return b.phase >= 3 ? cfg.getDouble("boss.super.radius-phase3", 40.0)
                 : cfg.getDouble("boss.super.radius", 30.0);
     }
 
     /** true dönerse süper hazırlığı sürüyor, normal davranışlar durur. */
-    private boolean superTick(Boss b, FileConfiguration cfg, Location bl, int t) {
+    private boolean superTick(BossState b, FileConfiguration cfg, Location bl, int t) {
         if (b.superState == 1) {
             chargeTick(b, cfg, bl, t);
             return true;
@@ -838,7 +655,7 @@ public final class BossManager {
         return true;
     }
 
-    private void startSuper(Boss b, FileConfiguration cfg, Location bl) {
+    private void startSuper(BossState b, FileConfiguration cfg, Location bl) {
         b.superState = 1;
         b.superTotal = Math.max(20, cfg.getInt("boss.super.charge-seconds", 5) * 20);
         b.superLeft = b.superTotal;
@@ -853,7 +670,7 @@ public final class BossManager {
         plugin.log("Typhon süper saldırıya hazırlanıyor.");
     }
 
-    private void chargeTick(Boss b, FileConfiguration cfg, Location bl, int t) {
+    private void chargeTick(BossState b, FileConfiguration cfg, Location bl, int t) {
         b.superLeft--;
         double progress = 1.0 - b.superLeft / (double) b.superTotal;
         double radius = blastRadius(b, cfg);
@@ -874,7 +691,7 @@ public final class BossManager {
         }
     }
 
-    private void blast(Boss b, FileConfiguration cfg, Location bl) {
+    private void blast(BossState b, FileConfiguration cfg, Location bl) {
         double radius = blastRadius(b, cfg);
         double maxHit = cfg.getDouble("boss.max-hit", 10.0);
         double damage = Math.min(cfg.getDouble("boss.super.damage", 6.0) * damageScale(b, cfg, bl), maxHit);
@@ -926,7 +743,7 @@ public final class BossManager {
         plugin.log("Typhon süper saldırıyı yaptı (" + b.superCount + ").");
     }
 
-    private void shieldBubble(Boss b, Location bl) {
+    private void shieldBubble(BossState b, Location bl) {
         Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(255, 110, 30), 1.5f);
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         for (int i = 0; i < 36; i++) {
@@ -941,7 +758,7 @@ public final class BossManager {
         }
     }
 
-    private void warnPlayers(Boss b, FileConfiguration cfg) {
+    private void warnPlayers(BossState b, FileConfiguration cfg) {
         Component msg = mm.deserialize(cfg.getString("messages.super-warning",
                 "<dark_purple>⚠ <light_purple><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"));
         double r = cfg.getDouble("boss.super.warning-radius", 70.0);
@@ -957,7 +774,7 @@ public final class BossManager {
 
     // ------------------------------------------------------------------ saldırılar
 
-    private void attackTick(Boss b, FileConfiguration cfg, Location bl) {
+    private void attackTick(BossState b, FileConfiguration cfg, Location bl) {
         if (b.attack != null) {
             runAttack(b, cfg);
             return;
@@ -983,20 +800,20 @@ public final class BossManager {
                 centers.add(p.getLocation().clone());
             }
             if (!centers.isEmpty()) {
-                b.attack = new Attack(2, b.phase >= 3 ? 30 : 36, centers, 3.0, strikeDamage);
+                b.attack = new BossAttack(2, b.phase >= 3 ? 30 : 36, centers, 3.0, strikeDamage);
                 b.poseNow = true;
                 snd(b, Sound.ENTITY_ENDER_DRAGON_GROWL, 8.0f, 1.2f);
                 return;
             }
         }
         double radius = b.phase >= 3 ? 9.0 : 7.0;
-        b.attack = new Attack(1, b.phase >= 3 ? 24 : 30, List.of(bl.clone()), radius, slamDamage);
+        b.attack = new BossAttack(1, b.phase >= 3 ? 24 : 30, List.of(bl.clone()), radius, slamDamage);
         b.poseNow = true;
         roar(b, 9.0f);
     }
 
-    private void runAttack(Boss b, FileConfiguration cfg) {
-        Attack a = b.attack;
+    private void runAttack(BossState b, FileConfiguration cfg) {
+        BossAttack a = b.attack;
         a.left--;
         double progress = 1.0 - a.left / (double) a.total;
         if (a.left % 2 == 0) {
@@ -1061,7 +878,7 @@ public final class BossManager {
 
     // ------------------------------------------------------------------ evre ve bar
 
-    private void onPhase(Boss b, FileConfiguration cfg, Location bl) {
+    private void onPhase(BossState b, FileConfiguration cfg, Location bl) {
         if (b.phase >= 2) {
             Material red = Material.REDSTONE_BLOCK;
             for (int i = 0; i < b.parts.size(); i++) {
@@ -1095,7 +912,7 @@ public final class BossManager {
         plugin.log("Typhon evre " + b.phase);
     }
 
-    private void refreshBar(Boss b) {
+    private void refreshBar(BossState b) {
         double r = plugin.getConfig().getDouble("boss.bar-radius", 150.0);
         for (Player p : Bukkit.getOnlinePlayers()) {
             p.getScheduler().run(plugin, t -> {
@@ -1109,7 +926,7 @@ public final class BossManager {
         }
     }
 
-    private void hideBar(Boss b) {
+    private void hideBar(BossState b) {
         if (b.bar == null) {
             return;
         }
@@ -1122,7 +939,7 @@ public final class BossManager {
 
     /** /meteor etkinlik -k : boss'u hemen kaldırır. */
     public boolean removeNow() {
-        Boss b = boss;
+        BossState b = boss;
         if (b == null) {
             return false;
         }
@@ -1131,7 +948,7 @@ public final class BossManager {
     }
 
     public void onDeath(EntityDeathEvent e) {
-        Boss b = boss;
+        BossState b = boss;
         if (b == null || !e.getEntity().getUniqueId().equals(b.bodyId)) {
             return;
         }
@@ -1183,8 +1000,8 @@ public final class BossManager {
         if (killer != null) {
             // Eşyalar ve tecrübe doğrudan öldüren oyuncunun envanterine gider
             e.setDroppedExp(0);
-            giveRewards(killer, items, exp, deathLoc);
-            announceWinner(killer.getName(), world, deathLoc, cfg);
+            rewards.give(killer, items, exp, deathLoc);
+            rewards.announce(killer.getName(), world, deathLoc, cfg);
         } else {
             e.getDrops().addAll(items);
             e.setDroppedExp(exp);
@@ -1194,57 +1011,7 @@ public final class BossManager {
         plugin.getEvents().bossDied();
     }
 
-    /** Eşyaları envantere ekler, sığmayanlar oyuncunun ayağına düşer. */
-    private void giveRewards(Player killer, List<ItemStack> items, int exp, Location fallback) {
-        World world = fallback.getWorld();
-        killer.getScheduler().run(plugin, t -> {
-            for (ItemStack it : items) {
-                for (ItemStack left : killer.getInventory().addItem(it).values()) {
-                    killer.getWorld().dropItemNaturally(killer.getLocation(), left);
-                }
-            }
-            killer.giveExp(exp);
-        }, () -> Bukkit.getRegionScheduler().run(plugin, fallback, t -> {
-            // oyuncu çıkmış/ölmüşse eşyalar ölüm noktasına düşer
-            for (ItemStack it : items) {
-                world.dropItemNaturally(fallback, it);
-            }
-        }));
-    }
-
-    /** Sohbete mesaj, 10 saniye boyunca azalan "KAZANAN" boss barı. */
-    private void announceWinner(String name, World world, Location at, FileConfiguration cfg) {
-        Component chat = mm.deserialize(cfg.getString("messages.killed",
-                "<gold>⚔ <yellow><bold>%player%</bold> <gray>Typhon'u yendi!").replace("%player%", name));
-        Bukkit.getServer().sendMessage(chat);
-
-        Component title = mm.deserialize(cfg.getString("messages.victory-bar",
-                "<gradient:#ffb12b:#ff2a2a><bold>KAZANAN</bold></gradient> <gray>│ <white>%player%").replace("%player%", name));
-        BossBar bar = BossBar.bossBar(title, 1.0f, BossBar.Color.YELLOW, BossBar.Overlay.PROGRESS);
-        double r = cfg.getDouble("boss.bar-radius", 150.0);
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            p.getScheduler().run(plugin, t -> {
-                if (p.getWorld().equals(world) && p.getLocation().distanceSquared(at) <= r * r) {
-                    p.showBossBar(bar);
-                }
-            }, null);
-        }
-        final int steps = 40; // 40 adım x 5 tick = 10 saniye
-        int[] step = {0};
-        Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, task -> {
-            step[0]++;
-            if (step[0] >= steps) {
-                task.cancel();
-                for (Player p : Bukkit.getOnlinePlayers()) {
-                    p.getScheduler().run(plugin, t -> p.hideBossBar(bar), null);
-                }
-                return;
-            }
-            bar.progress(1.0f - step[0] / (float) steps);
-        }, 5L, 5L);
-    }
-
-    private void finishBoss(Boss b, boolean died) {
+    private void finishBoss(BossState b, boolean died) {
         synchronized (b) {
             if (b.removing) {
                 return;
@@ -1297,7 +1064,7 @@ public final class BossManager {
     // ------------------------------------------------------------------ hedef değiştirme, kuyruk
 
     /** Zombi tek oyuncuya kilitlenmesin: belirli aralıkla hedefi başka oyuncuya çevirir. */
-    private void retarget(Boss b, Location bl, int t) {
+    private void retarget(BossState b, Location bl, int t) {
         if (t < b.nextRetarget) {
             return;
         }
@@ -1323,7 +1090,7 @@ public final class BossManager {
     }
 
     /** Arkasına geçen oyuncuya kuyruk darbesi (hazırlık: kuyruk kıvrılır, sonra savurur). */
-    private void tailTick(Boss b, FileConfiguration cfg, Location bl) {
+    private void tailTick(BossState b, FileConfiguration cfg, Location bl) {
         double yaw = Math.toRadians(bl.getYaw());
         if (b.tailLeft > 0) {
             b.tailLeft--;
@@ -1362,7 +1129,7 @@ public final class BossManager {
         b.tailCd = 10;
     }
 
-    private void drawTailArc(Boss b, Location bl, double yaw, double strength) {
+    private void drawTailArc(BossState b, Location bl, double yaw, double strength) {
         Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(255, (int) (160 - 120 * strength), 10), 1.8f);
         for (int i = -6; i <= 6; i++) {
             double a = yaw + Math.PI + i * 0.25;
@@ -1373,7 +1140,7 @@ public final class BossManager {
         }
     }
 
-    private void tailStrike(Boss b, FileConfiguration cfg, Location bl, double yaw) {
+    private void tailStrike(BossState b, FileConfiguration cfg, Location bl, double yaw) {
         double dmg = Math.min(cfg.getDouble("boss.tail-damage", 4.0) * damageScale(b, cfg, bl),
                 cfg.getDouble("boss.max-hit", 10.0));
         World world = b.world;
@@ -1414,12 +1181,12 @@ public final class BossManager {
     // ------------------------------------------------------------------ olaylar (BossListener çağırır)
 
     public boolean isBody(Entity e) {
-        Boss b = boss;
+        BossState b = boss;
         return b != null && e.getUniqueId().equals(b.bodyId);
     }
 
     public boolean isCrystal(Entity e) {
-        Boss b = boss;
+        BossState b = boss;
         if (b == null) {
             return false;
         }
@@ -1432,13 +1199,13 @@ public final class BossManager {
     }
 
     public Location homeOrNull() {
-        Boss b = boss;
+        BossState b = boss;
         return b == null ? null : b.home;
     }
 
     /** Boss ve kristallere gelen/giden hasar kuralları. */
     public void onDamage(EntityDamageEvent e) {
-        Boss b = boss;
+        BossState b = boss;
         if (b == null) {
             return;
         }
@@ -1497,7 +1264,7 @@ public final class BossManager {
 
     /** Hasarı kaydeder, acı sesi ve sarsılma animasyonunu oynatır. */
     public void onDamageDone(EntityDamageEvent e) {
-        Boss b = boss;
+        BossState b = boss;
         if (b == null || !e.getEntity().getUniqueId().equals(b.bodyId)) {
             return;
         }
@@ -1529,7 +1296,7 @@ public final class BossManager {
         return null;
     }
 
-    private void breakCrystal(Boss b, EnderCrystal c) {
+    private void breakCrystal(BossState b, EnderCrystal c) {
         if (!b.crystals.remove(c)) {
             return;
         }
