@@ -19,6 +19,7 @@ public final class MeteorBossPlugin extends JavaPlugin {
 
     private final Deque<String> logBuffer = new ConcurrentLinkedDeque<>();
     private EventManager events;
+    private AutoEvent autoEvent;
     private File dataFile;
     private YamlConfiguration data;
 
@@ -28,6 +29,7 @@ public final class MeteorBossPlugin extends JavaPlugin {
         dataFile = new File(getDataFolder(), "data.yml");
         data = YamlConfiguration.loadConfiguration(dataFile);
         events = new EventManager(this, new BackupStore(getDataFolder()));
+        autoEvent = new AutoEvent(this, events);
 
         BossManager bossManager = new BossManager(this);
         events.setBossManager(bossManager);
@@ -43,7 +45,7 @@ public final class MeteorBossPlugin extends JavaPlugin {
 
         // Sunucu etkinlik ortasında kapandıysa çukuru geri kur
         Bukkit.getGlobalRegionScheduler().runDelayed(this, task -> events.recoverOnStartup(), 100L);
-        Bukkit.getGlobalRegionScheduler().runAtFixedRate(this, task -> events.autoTick(), 600L, 600L);
+        Bukkit.getGlobalRegionScheduler().runAtFixedRate(this, task -> autoEvent.tick(), 200L, 200L);
         log("MeteorBoss açıldı.");
     }
 
@@ -69,6 +71,28 @@ public final class MeteorBossPlugin extends JavaPlugin {
         logBuffer.addLast(java.time.LocalDateTime.now() + " " + line);
         while (logBuffer.size() > LOG_LIMIT) {
             logBuffer.pollFirst();
+        }
+    }
+
+    /** /meteor etkinlik kaydet ile belirlenen otomatik etkinlik yeri. */
+    public record AutoSite(String world, int x, int z) {}
+
+    public synchronized AutoSite getAutoSite() {
+        String world = data.getString("auto-site.world");
+        if (world == null || world.isBlank()) {
+            return null;
+        }
+        return new AutoSite(world, data.getInt("auto-site.x"), data.getInt("auto-site.z"));
+    }
+
+    public synchronized void setAutoSite(AutoSite site) {
+        data.set("auto-site.world", site.world());
+        data.set("auto-site.x", site.x());
+        data.set("auto-site.z", site.z());
+        try {
+            data.save(dataFile);
+        } catch (IOException e) {
+            logError("data.yml kaydedilemedi", e);
         }
     }
 

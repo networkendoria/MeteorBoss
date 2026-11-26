@@ -51,6 +51,17 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
                         }
                         return true;
                     }
+                    case "kaydet" -> {
+                        if (!(sender instanceof Player player)) {
+                            sender.sendMessage("Bu komutu oyun içinden kullan.");
+                            return true;
+                        }
+                        Location at = player.getLocation();
+                        plugin.setAutoSite(new MeteorBossPlugin.AutoSite(at.getWorld().getName(), at.getBlockX(), at.getBlockZ()));
+                        sender.sendMessage(events.text("<green>Otomatik etkinlik yeri kaydedildi: <white>" + at.getWorld().getName()
+                                + " <gray>(x " + at.getBlockX() + ", z " + at.getBlockZ() + ")"));
+                        return true;
+                    }
                     case "-z" -> {
                         return callAhead(sender, true);
                     }
@@ -58,7 +69,7 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
                         return callAhead(sender, false);
                     }
                     default -> {
-                        sender.sendMessage(events.text("<red>Kullanım: /meteor etkinlik [-z | -k]"));
+                        sender.sendMessage(events.text("<red>Kullanım: /meteor etkinlik [-z | -k | kaydet]"));
                         return true;
                     }
                 }
@@ -105,7 +116,7 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
             }
         }
         if (args.length < 2) {
-            sender.sendMessage(events.text("<red>Kullanım: /meteor [x z] | reload | etkinlik [-z|-k] | debug"));
+            sender.sendMessage(events.text("<red>Kullanım: /meteor [x z] | reload | etkinlik [-z|-k|kaydet] | debug"));
             return true;
         }
         int x;
@@ -161,7 +172,7 @@ public final class MeteorCommand implements CommandExecutor, TabCompleter {
                 }
             }
         } else if (args.length == 2 && args[0].equalsIgnoreCase("etkinlik")) {
-            for (String s : List.of("-z", "-k")) {
+            for (String s : List.of("-z", "-k", "kaydet")) {
                 if (s.startsWith(args[1].toLowerCase())) {
                     out.add(s);
                 }

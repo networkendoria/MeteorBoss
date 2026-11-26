@@ -35,12 +35,16 @@ auto-event:
   # Belirli saatlerde başlat (tırnak içinde yaz). Boş bırakırsan aşağıdaki aralık süresi kullanılır.
   # Örnek: times: ["18:00", "21:30"]
   times: []
+  # Başlamadan kaç dakika önce sohbete ve boss barına duyuru gitsin (örn. [10, 5, 1]). Boş = duyuru yok
+  announce-minutes: [10, 5, 1]
   # Saatlerin hangi saat dilimine göre sayılacağı
   timezone: "Europe/Istanbul"
   # Etkinlikler arası süre (dakika), times boşsa geçerli. cooldown-minutes'tan küçük olmasın
   interval-minutes: 120
   # En az kaç oyuncu çevrimiçi olsun
   min-players: 3
+  # Yer: /meteor etkinlik kaydet ile durduğun yer (dünya dahil) kaydedilir ve otomatik etkinlik hep orada olur.
+  # Kayıt yoksa aşağıdaki ayarlarla rastgele bir yer seçilir.
   # Rastgele bir oyuncunun kaç blok uzağına düşsün (en az / en çok)
   min-distance: 80
   max-distance: 200
@@ -49,6 +53,8 @@ auto-event:
 
 messages:
   killed: "<gold>⚔ <yellow><bold>%player%</bold> <gray>Typhon'u yendi!"
+  auto-announce: "<gold>☄ <yellow>Meteor etkinliği <white>%time%</white> sonra başlıyor!"
+  auto-bar: "<gradient:#ffb12b:#ff2a2a><bold>☄ METEOR ETKİNLİĞİ</bold></gradient> <gray>│ <white>%time% sonra"
   victory-bar: "<gradient:#ffb12b:#ff2a2a><bold>KAZANAN</bold></gradient> <gray>│ <white>%player%"
   super-warning: "<dark_red>⚠ <gold><bold>ʙᴏşʟᴜᴋ ᴘᴀᴛʟᴀᴍᴀsɪ</bold> <gray>geliyor! <white>Uzaklaş!"
   title: "<gradient:#ffb12b:#ff2a2a><bold>☄ METEOR ☄</bold></gradient>"
