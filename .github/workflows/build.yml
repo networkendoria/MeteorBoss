@@ -13,9 +13,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
       - name: Build
-        run: mvn -B package
+        run: ./gradlew --no-daemon build
       - uses: actions/upload-artifact@v4
         with:
           name: Typhon
-          path: target/Typhon.jar
+          path: build/libs/Typhon.jar

@@ -1,5 +1,5 @@
 name: MeteorBoss
-version: '${project.version}'
+version: '${version}'
 main: com.zyven.meteorboss.MeteorBossPlugin
 api-version: '26.2'
 folia-supported: true
